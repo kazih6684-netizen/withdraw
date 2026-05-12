@@ -30,4 +30,5 @@ export const TRANSLATIONS = {
   CONFIRM_APPROVE: "আপনি কি নিশ্চিত যে আপনি এটি অ্যাপ্রুভ করবেন?",
   CONFIRM_REJECT: "আপনি কি নিশ্চিত যে আপনি এটি রিজেক্ট করবেন?",
   CONFIRM_DELETE: "আপনি কি নিশ্চিত যে আপনি এটি মুছে ফেলবেন?",
+  REMOVE: "রিমুভ করুন",
 };

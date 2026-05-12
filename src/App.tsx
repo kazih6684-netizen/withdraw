@@ -40,7 +40,8 @@ import {
   Users,
   Search,
   Filter,
-  Trash2
+  Trash2,
+  Edit2
 } from 'lucide-react';
 
 // --- Shared Components ---
@@ -322,7 +323,7 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession }: {
 
   const filteredMembers = members.filter(m => 
     m.role === activeTab && 
-    (m.name.toLowerCase().includes(search.toLowerCase()) || (m.number && m.number.includes(search)))
+    (m.name.toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
@@ -439,9 +440,11 @@ function AdminDashboard({
   onUserView: () => void,
   key?: string
 }) {
+  const [loadingId, setLoadingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'members' | 'history'>('members');
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [showAddMember, setShowAddMember] = useState(false);
+  const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [memberTab, setMemberTab] = useState<'leader' | 'trainer'>('leader');
 
   useEffect(() => {
@@ -529,37 +532,79 @@ function AdminDashboard({
             <div className="space-y-4">
               <div className="grid gap-3">
                 {members.filter(m => m.role === memberTab).map(member => (
-                  <div key={member.id} className="bg-white/5 p-5 rounded-3xl border border-white/10 flex items-center justify-between group">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center text-white/40">
-                        <UserIcon size={24} />
+                  <div key={member.id} className="bg-white/5 p-4 rounded-2xl border border-white/10 flex items-center justify-between">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-400 shrink-0">
+                        <UserIcon size={20} />
                       </div>
-                      <div>
-                        <h3 className="font-bold text-lg leading-tight">{member.name}</h3>
-                        {member.number && <p className="text-xs text-white/40 mt-0.5">{member.number}</p>}
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-bold text-base truncate">{member.name}</h3>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-1 shrink-0 ml-2">
                       <button 
+                        type="button"
+                        onClick={() => {
+                          console.log('Initiating edit for:', member.name);
+                          setEditingMember(member);
+                        }}
+                        className="p-2.5 flex items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500 hover:text-white transition-all active:scale-90 border border-indigo-500/20"
+                        title="Edit Member"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button 
+                        type="button"
                         onClick={async (e) => {
                           e.stopPropagation();
-                          const confirmDelete = window.confirm(TRANSLATIONS.CONFIRM_DELETE || 'Are you sure you want to delete this member?');
-                          if (confirmDelete) {
-                            try {
-                              const docRef = doc(db, 'teamMembers', member.id);
-                              await deleteDoc(docRef);
-                              console.log('Successfully deleted member:', member.id);
-                            } catch (error: any) {
-                              console.error('Delete error details:', error);
-                              alert('Delete failed: ' + (error.message || 'Unknown error'));
-                              handleFirestoreError(error, OperationType.DELETE, `teamMembers/${member.id}`);
-                            }
+                          e.preventDefault();
+                          
+                          console.log('List: Delete button clicked for', member.name);
+                          
+                          if (loadingId) {
+                            console.log('List: Already loading, skipping delete');
+                            return;
+                          }
+                          
+                          const memberId = member.id;
+                          const memberName = member.name;
+                          
+                          if (!memberId) {
+                            console.error('List: CRITICAL - Member ID missing:', member);
+                            alert('Error: Member ID not found');
+                            return;
+                          }
+
+                          console.log('List: Initiating delete for ID:', memberId);
+                          setLoadingId(memberId);
+                          
+                          try {
+                            const memberDocRef = doc(db, 'teamMembers', memberId);
+                            await deleteDoc(memberDocRef);
+                            console.log('List: Successfully deleted document:', memberId);
+                            alert('মেম্বার সফলভাবে ডিলিট করা হয়েছে');
+                          } catch (err: any) {
+                            console.error('List: DELETE FAILED:', err);
+                            alert('ডিলিট করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।');
+                            handleFirestoreError(err, OperationType.DELETE, `teamMembers/${memberId}`);
+                          } finally {
+                            setLoadingId(null);
+                            console.log('List: Loading state cleared');
                           }
                         }}
-                        className="w-12 h-12 flex items-center justify-center bg-rose-500/10 text-rose-500 rounded-2xl hover:bg-rose-500 hover:text-white transition-all active:scale-95 shadow-sm relative z-30"
+                        disabled={loadingId !== null}
+                        className={`p-3 flex items-center justify-center rounded-xl transition-all shadow-lg active:scale-90 border-2 ${
+                          loadingId === member.id 
+                            ? 'bg-rose-900 border-rose-900 text-white/50 cursor-wait' 
+                            : 'bg-rose-600 border-rose-500 text-white hover:bg-rose-500 cursor-pointer'
+                        }`}
                         title="Delete Member"
                       >
-                        <Trash2 size={24} />
+                        {loadingId === member.id ? (
+                          <div className="w-5 h-5 border-2 border-white border-t-transparent animate-spin rounded-full" />
+                        ) : (
+                          <Trash2 size={18} />
+                        )}
                       </button>
                     </div>
                   </div>
@@ -583,6 +628,12 @@ function AdminDashboard({
           <AddMemberModal 
             role={memberTab}
             onClose={() => setShowAddMember(false)} 
+          />
+        )}
+        {editingMember && (
+          <EditMemberModal 
+            member={editingMember}
+            onClose={() => setEditingMember(null)} 
           />
         )}
         {showNotifications && (
@@ -771,7 +822,6 @@ function HistoryModal({ history, onClose }: { history: RequestData[], onClose: (
 
 function AddMemberModal({ role, onClose }: { role: 'leader' | 'trainer', onClose: () => void }) {
   const [name, setName] = useState('');
-  const [number, setNumber] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -782,7 +832,7 @@ function AddMemberModal({ role, onClose }: { role: 'leader' | 'trainer', onClose
       await addDoc(collection(db, 'teamMembers'), {
         name: name.trim(),
         role,
-        addedAt: serverTimestamp()
+        createdAt: serverTimestamp()
       });
       onClose();
     } catch (error) { 
@@ -819,9 +869,125 @@ function AddMemberModal({ role, onClose }: { role: 'leader' | 'trainer', onClose
           <button 
             type="submit"
             disabled={loading || !name.trim()}
-            className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 transition-all rounded-2xl font-bold shadow-xl shadow-emerald-600/20 mt-2"
+            className="w-full py-5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 transition-all rounded-3xl font-bold text-xl shadow-xl shadow-emerald-600/20 mt-4 active:scale-95"
           >
             {loading ? '...' : TRANSLATIONS.SUBMIT}
+          </button>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
+
+function EditMemberModal({ member, onClose }: { member: TeamMember, onClose: () => void }) {
+  const [name, setName] = useState(member.name);
+  const [loading, setLoading] = useState(false);
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    console.log('Modal: Delete initiated for', member.name, 'ID:', member.id);
+    
+    if (loading) {
+      console.log('Modal: Already loading, skipping');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      console.log('Modal: Deleting doc...');
+      const docRef = doc(db, 'teamMembers', member.id);
+      await deleteDoc(docRef);
+      console.log('Modal: Delete success');
+      alert('সফলভাবে ডিলিট করা হয়েছে');
+      onClose();
+    } catch (error: any) { 
+      console.error('Modal: Delete error:', error);
+      alert('ডিলিট করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।');
+      handleFirestoreError(error, OperationType.DELETE, `teamMembers/${member.id}`);
+    } finally { 
+      setLoading(false); 
+      console.log('Modal: Loading state reset');
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setLoading(true);
+    try {
+      const docRef = doc(db, 'teamMembers', member.id);
+      await updateDoc(docRef, {
+        name: name.trim(),
+        updatedAt: serverTimestamp()
+      });
+      alert('সফলভাবে আপডেট করা হয়েছে');
+      onClose();
+    } catch (error) { 
+      handleFirestoreError(error, OperationType.UPDATE, `teamMembers/${member.id}`);
+    } finally { 
+      setLoading(false); 
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/60 backdrop-blur-md" 
+      />
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+        className="relative w-full max-w-sm bg-[#1a1b1e] rounded-3xl p-8 border border-white/10 shadow-2xl"
+      >
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold italic">মেম্বার এডিট করুন</h2>
+          <div className="flex items-center gap-2">
+            <button 
+              type="button"
+              onClick={handleDelete}
+              disabled={loading}
+              className="px-4 py-2 bg-rose-600 text-white hover:bg-rose-500 rounded-xl transition-all shadow-lg active:scale-90 flex items-center gap-2 font-bold text-xs disabled:opacity-50"
+              title="Delete Member"
+            >
+              {loading ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent animate-spin rounded-full" />
+              ) : (
+                <>
+                  <Trash2 size={16} />
+                  <span>ডিলিট</span>
+                </>
+              )}
+            </button>
+            <button 
+              type="button"
+              onClick={onClose} 
+              className="p-2 hover:bg-white/5 rounded-xl border border-white/10"
+            >
+              <XCircle size={20} className="text-white/40" />
+            </button>
+          </div>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-white/40 pl-1">{TRANSLATIONS.NAME}</label>
+            <input 
+              placeholder="Full Name"
+              required
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <button 
+            type="submit"
+            disabled={loading || !name.trim()}
+            className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-all rounded-3xl font-bold text-xl shadow-xl shadow-indigo-600/20 mt-4 active:scale-95"
+          >
+            {loading ? 'আপডেট হচ্ছে...' : 'আপডেট করুন'}
           </button>
         </form>
       </motion.div>
@@ -833,22 +999,32 @@ function NotificationCenter({ notifications, onClose }: { notifications: Request
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
   const handleAction = async (id: string, status: 'approved' | 'rejected') => {
-    if (loadingId) return;
+    if (loadingId) {
+      console.warn('handleAction: Already loading:', loadingId);
+      return;
+    }
+    
+    console.log(`handleAction: Initiating ${status} for ${id}`);
     setLoadingId(id);
-    console.log(`Starting ${status} for request ${id}`);
+    
     try {
       const requestRef = doc(db, 'requests', id);
+      console.log('handleAction: Sending update to Firestore...');
+      
       await updateDoc(requestRef, {
         status: status,
         updatedAt: serverTimestamp()
       });
-      console.log(`Firestore update success for ${id}: ${status}`);
+      
+      console.log('handleAction: Update confirmed by Firestore');
+      alert(status === 'approved' ? 'সফলভাবে অ্যাপ্রুভ হয়েছে' : 'রিজেক্ট করা হয়েছে');
     } catch (error: any) {
-      console.error('Action execution error:', error);
-      alert('Failed to update status: ' + (error.message || 'Connection error'));
+      console.error('handleAction: ERROR:', error);
+      alert('সফল হয়নি: ' + (error.message || 'Error updating status'));
       handleFirestoreError(error, OperationType.UPDATE, `requests/${id}`);
     } finally {
       setLoadingId(null);
+      console.log('handleAction: Finished cleanup');
     }
   };
 
@@ -888,22 +1064,38 @@ function NotificationCenter({ notifications, onClose }: { notifications: Request
                  {req.note && <p className="text-sm text-white/50 italic bg-white/5 p-4 rounded-2xl border border-white/5">"{req.note}"</p>}
                </div>
                
-               <div className="flex border-t border-white/5">
-                 <button 
-                  onClick={() => handleAction(req.id, 'approved')}
-                  disabled={loadingId === req.id}
-                  className="flex-1 py-4 font-bold transition-all border-r border-white/5 flex items-center justify-center gap-2 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 disabled:opacity-50"
-                 >
-                   Approve
-                 </button>
-                 <button 
-                  onClick={() => handleAction(req.id, 'rejected')}
-                  disabled={loadingId === req.id}
-                  className="flex-1 py-4 font-bold transition-all flex items-center justify-center gap-2 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 disabled:opacity-50"
-                 >
-                   Reject
-                 </button>
-               </div>
+                <div className="flex border-t border-white/5 overflow-hidden">
+                  <button 
+                   type="button"
+                   onClick={() => {
+                     console.log('Approve requested for:', req.id);
+                     handleAction(req.id, 'approved');
+                   }}
+                   disabled={loadingId !== null}
+                   className={`flex-1 py-6 font-bold transition-all border-r border-white/10 flex items-center justify-center gap-2 hover:bg-emerald-500 hover:text-white text-xl active:scale-95 disabled:opacity-50 cursor-pointer ${
+                     loadingId === req.id ? 'bg-emerald-900/40 text-emerald-200' : 'bg-emerald-500/10 text-emerald-400'
+                   }`}
+                  >
+                    {loadingId === req.id ? (
+                      <div className="w-6 h-6 border-2 border-emerald-400 border-t-transparent animate-spin rounded-full" />
+                    ) : (TRANSLATIONS.APPROVED || 'Approve')}
+                  </button>
+                  <button 
+                   type="button"
+                   onClick={() => {
+                     console.log('Reject requested for:', req.id);
+                     handleAction(req.id, 'rejected');
+                   }}
+                   disabled={loadingId !== null}
+                   className={`flex-1 py-6 font-bold transition-all flex items-center justify-center gap-2 hover:bg-rose-500 hover:text-white text-xl active:scale-95 disabled:opacity-50 cursor-pointer ${
+                     loadingId === req.id ? 'bg-rose-900/40 text-rose-200' : 'bg-rose-500/10 text-rose-400'
+                   }`}
+                  >
+                    {loadingId === req.id ? (
+                      <div className="w-6 h-6 border-2 border-rose-400 border-t-transparent animate-spin rounded-full" />
+                    ) : (TRANSLATIONS.REJECTED || 'Reject')}
+                  </button>
+                </div>
             </div>
           ))}
           
@@ -922,6 +1114,7 @@ function NotificationCenter({ notifications, onClose }: { notifications: Request
 function AdminHistoryView() {
   const [history, setHistory] = useState<RequestData[]>([]);
   const [filter, setFilter] = useState<'all' | 'approved' | 'rejected'>('all');
+  const [isClearing, setIsClearing] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, 'requests'), orderBy('createdAt', 'desc'));
@@ -935,20 +1128,51 @@ function AdminHistoryView() {
     return () => unsubscribe();
   }, []);
 
+  const handleClearHistory = async () => {
+    if (history.length === 0) return;
+
+    setIsClearing(true);
+    try {
+      // For safety and to avoid massive batches, we delete documents from the local history state
+      const deletePromises = history.map(item => deleteDoc(doc(db, 'requests', item.id)));
+      await Promise.all(deletePromises);
+      alert('সফলভাবে সমস্ত ডাটা ক্লিয়ার করা হয়েছে');
+    } catch (error) {
+      console.error('Clear history error:', error);
+      alert('ডাটা ক্লিয়ার করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।');
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   const filteredHistory = filter === 'all' ? history : history.filter(h => h.status === filter);
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 p-1 bg-white/5 rounded-2xl">
-        {(['all', 'approved', 'rejected'] as const).map(f => (
-          <button 
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold capitalize transition-all ${filter === f ? 'bg-white/10 shadow-sm' : 'text-white/40'}`}
-          >
-            {f === 'all' ? TRANSLATIONS.FILTER_ALL : (f === 'approved' ? TRANSLATIONS.APPROVED : TRANSLATIONS.REJECTED)}
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-1 gap-2 p-1 bg-white/5 rounded-2xl">
+          {(['all', 'approved', 'rejected'] as const).map(f => (
+            <button 
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`flex-1 py-2 rounded-xl text-[10px] font-bold capitalize transition-all ${filter === f ? 'bg-white/10 shadow-sm text-white' : 'text-white/40'}`}
+            >
+              {f === 'all' ? TRANSLATIONS.FILTER_ALL : (f === 'approved' ? TRANSLATIONS.APPROVED : TRANSLATIONS.REJECTED)}
+            </button>
+          ))}
+        </div>
+        <button 
+          onClick={handleClearHistory}
+          disabled={isClearing || history.length === 0}
+          className="p-2.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-30 text-white rounded-2xl transition-all shadow-lg active:scale-90 flex items-center justify-center shrink-0"
+          title="Clear All History"
+        >
+          {isClearing ? (
+            <div className="w-5 h-5 border-2 border-white border-t-transparent animate-spin rounded-full" />
+          ) : (
+            <Trash2 size={20} />
+          )}
+        </button>
       </div>
 
       <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
@@ -964,6 +1188,9 @@ function AdminHistoryView() {
             </div>
           </div>
         ))}
+        {filteredHistory.length === 0 && (
+          <div className="text-center py-20 text-white/10">No data found</div>
+        )}
       </div>
     </div>
   );
