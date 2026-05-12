@@ -1,0 +1,59 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a user in the system (Admin, Leader, or Trainer)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "leader", "trainer"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "TeamMember": {
+      "title": "Team Member",
+      "description": "A member managed by the admin",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["leader", "trainer"] },
+        "addedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "role"]
+    },
+    "Request": {
+      "title": "Request",
+      "description": "A payment or service request submitted by a team leader/trainer",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderRole": { "type": "string" },
+        "recipientName": { "type": "string" },
+        "amount": { "type": "number" },
+        "note": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderName", "recipientName", "amount", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and roles"
+    },
+    "/teamMembers/{memberId}": {
+      "schema": "TeamMember",
+      "description": "List of team leaders and trainers available for selection"
+    },
+    "/requests/{requestId}": {
+      "schema": "Request",
+      "description": "Requests history and pending queue"
+    }
+  }
+}

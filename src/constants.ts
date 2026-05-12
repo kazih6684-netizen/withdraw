@@ -1,0 +1,33 @@
+/**
+ * Bengali translations for the app
+ */
+export const TRANSLATIONS = {
+  TITLE: "Unity Earning",
+  SUBTITLE: "Smart Request System",
+  ENTER: "প্রবেশ করুন",
+  ADMIN_LOGIN: "অ্যাডমিন লগইন",
+  TEAM_LEADER: "টিম লিডার",
+  TEAM_TRAINER: "টিম ট্রেইনার",
+  NAME: "নাম",
+  NUMBER: "নাম্বার",
+  AMOUNT: "টাকার পরিমাণ",
+  NOTE: "নোট",
+  SUBMIT: "সাবমিট করুন",
+  PENDING: "পেন্ডিং",
+  APPROVED: "অ্যাপ্রুভড",
+  REJECTED: "রিজেক্টেড",
+  HISTORY: "ইতিহাস",
+  DASHBOARD: "ড্যাশবোর্ড",
+  ADD_MEMBER: "সদস্য যোগ করুন",
+  LOGOUT: "লগআউট",
+  NOTIFICATIONS: "নোটিফিকেশন",
+  DELETE: "মুছে ফেলুন",
+  SEARCH: "অনুসন্ধান করুন",
+  FILTER_ALL: "সব",
+  PASSWORD: "পাসওয়ার্ড",
+  ADMIN_CODE: "এডমিন কোড",
+  SUCCESS_SUBMIT: "অনুরোধটি সফলভাবে পাঠানো হয়েছে",
+  CONFIRM_APPROVE: "আপনি কি নিশ্চিত যে আপনি এটি অ্যাপ্রুভ করবেন?",
+  CONFIRM_REJECT: "আপনি কি নিশ্চিত যে আপনি এটি রিজেক্ট করবেন?",
+  CONFIRM_DELETE: "আপনি কি নিশ্চিত যে আপনি এটি মুছে ফেলবেন?",
+};
