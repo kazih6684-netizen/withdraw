@@ -731,16 +731,16 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUr
                   }}
                   className="p-4 bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-indigo-500/30 hover:border-indigo-500/60 rounded-2xl text-left flex items-center justify-between group transition-all"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30 shrink-0">
                       <Banknote size={20} />
                     </div>
-                    <div>
-                      <h4 className="font-bold text-white group-hover:text-indigo-300 transition-colors">Withdraw Request</h4>
-                      <p className="text-xs text-white/50">Send a withdrawal request</p>
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-white group-hover:text-indigo-300 transition-colors truncate">Withdraw Request</h4>
+                      <p className="text-xs text-white/50 truncate">Send a withdrawal request</p>
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-white/30 group-hover:text-white" />
+                  <ChevronRight size={18} className="text-white/30 group-hover:text-white shrink-0 ml-1" />
                 </button>
 
                 <button
@@ -750,16 +750,16 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUr
                   }}
                   className="p-4 bg-gradient-to-r from-cyan-900/40 to-blue-900/40 border border-cyan-500/30 hover:border-cyan-500/60 rounded-2xl text-left flex items-center justify-between group transition-all"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30 shrink-0">
                       <Sparkles size={20} />
                     </div>
-                    <div>
-                      <h4 className="font-bold text-white group-hover:text-cyan-300 transition-colors">Seat Book</h4>
-                      <p className="text-xs text-white/50">Fill up seat booking form</p>
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-white group-hover:text-cyan-300 transition-colors truncate">Seat Book</h4>
+                      <p className="text-xs text-white/50 truncate">Fill up seat booking form</p>
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-white/30 group-hover:text-white" />
+                  <ChevronRight size={18} className="text-white/30 group-hover:text-white shrink-0 ml-1" />
                 </button>
 
                 <button
@@ -769,16 +769,16 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUr
                   }}
                   className="p-4 bg-gradient-to-r from-emerald-900/40 to-teal-900/40 border border-emerald-500/30 hover:border-emerald-500/60 rounded-2xl text-left flex items-center justify-between group transition-all"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30 shrink-0">
                       <HistoryIcon size={20} />
                     </div>
-                    <div>
-                      <h4 className="font-bold text-white group-hover:text-emerald-300 transition-colors">মাই হিস্ট্রি (My Account History)</h4>
-                      <p className="text-xs text-white/50">শুধুমাত্র এই অ্যাকাউন্টের নিজস্ব রিকোয়েস্ট দেখুন</p>
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-white group-hover:text-emerald-300 transition-colors truncate">My History</h4>
+                      <p className="text-xs text-white/50 truncate">View account history</p>
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-white/30 group-hover:text-white" />
+                  <ChevronRight size={18} className="text-white/30 group-hover:text-white shrink-0 ml-1" />
                 </button>
               </div>
             </motion.div>
