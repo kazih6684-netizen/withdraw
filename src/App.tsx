@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import html2canvas from 'html2canvas';
 import { 
   auth, 
   db, 
   onAuthStateChanged, 
-  signInWithPopup, 
-  googleProvider,
   signOut,
   doc,
   getDoc,
@@ -12,18 +11,17 @@ import {
   onSnapshot,
   collection,
   query,
-  where,
   orderBy,
   addDoc,
   serverTimestamp,
   updateDoc,
   deleteDoc,
-  browserPopupRedirectResolver,
   handleFirestoreError,
   OperationType
 } from './lib/firebase';
 import { UserProfile, TeamMember, RequestData } from './types';
 import { TRANSLATIONS } from './constants';
+import { MemberDesignBadge } from './components/MemberDesignBadge';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Bell, 
@@ -34,16 +32,91 @@ import {
   History as HistoryIcon,
   CheckCircle2,
   XCircle,
-  Clock,
   ChevronRight,
   TrendingUp,
   Users,
   Search,
-  Filter,
   Trash2,
   Edit2,
-  Delete
+  Delete,
+  Calendar,
+  Send,
+  Smartphone,
+  Banknote,
+  Lock,
+  Sparkles,
+  Shield,
+  Clock,
+  Check,
+  Download,
+  Printer,
+  FileText,
+  RotateCcw,
+  Upload
 } from 'lucide-react';
+
+// --- Image Compression Helper ---
+function compressAndConvertToBase64(file: File, maxWidth = 400, maxHeight = 400): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/png', 0.9));
+        } else {
+          resolve(event.target?.result as string);
+        }
+      };
+      img.onerror = (error) => reject(error);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+}
+
+// --- Helper for Local Storage User Submitted Requests Tracking ---
+function getMySubmittedRequestIds(): string[] {
+  try {
+    const raw = localStorage.getItem('unity_my_requests');
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveMySubmittedRequestId(id: string) {
+  try {
+    const current = getMySubmittedRequestIds();
+    if (!current.includes(id)) {
+      current.push(id);
+      localStorage.setItem('unity_my_requests', JSON.stringify(current));
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
 
 // --- Shared Components ---
 
@@ -54,19 +127,37 @@ const GlassCard = ({ children, className = "" }: { children: React.ReactNode, cl
 );
 
 const Badge = ({ status }: { status: string }) => {
-  const colors = {
-    pending: "bg-amber-500/20 text-amber-500 border-amber-500/30",
-    approved: "bg-emerald-500/20 text-emerald-500 border-emerald-500/30",
-    rejected: "bg-rose-500/20 text-rose-500 border-rose-500/30"
+  const styles = {
+    pending: "bg-amber-500/15 text-amber-300 border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.15)]",
+    accepted: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.15)]",
+    confirmed: "bg-blue-500/15 text-blue-300 border-blue-500/30 shadow-[0_0_8px_rgba(59,130,246,0.15)]",
+    approved: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.15)]",
+    rejected: "bg-rose-500/15 text-rose-300 border-rose-500/30 shadow-[0_0_8px_rgba(244,63,94,0.15)]"
   };
-  const labels = {
-    pending: TRANSLATIONS.PENDING,
-    approved: TRANSLATIONS.APPROVED,
-    rejected: TRANSLATIONS.REJECTED
+  const dots = {
+    pending: "bg-amber-400 animate-pulse",
+    accepted: "bg-emerald-400",
+    confirmed: "bg-blue-400",
+    approved: "bg-emerald-400",
+    rejected: "bg-rose-400"
   };
+  const labels: Record<string, string> = {
+    pending: "পেন্ডিং",
+    accepted: "একসেপ্টেড",
+    confirmed: "কনফার্মড",
+    approved: "অনুমোদিত",
+    rejected: "রিজেক্টেড"
+  };
+
+  const key = status as keyof typeof styles;
+  const currentStyle = styles[key] || "bg-gray-500/20 text-gray-400 border-gray-500/30";
+  const currentDot = dots[key] || "bg-gray-400";
+  const currentLabel = labels[status] || status;
+
   return (
-    <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${colors[status as keyof typeof colors]}`}>
-      {labels[status as keyof typeof labels]}
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${currentStyle}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${currentDot}`} />
+      {currentLabel}
     </span>
   );
 };
@@ -80,16 +171,18 @@ export default function App() {
   const [notifications, setNotifications] = useState<RequestData[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isAdminSession, setIsAdminSession] = useState(false);
-  const [userPinConfig, setUserPinConfig] = useState<string>('1234'); // Default fallback
+  const [userPinConfig, setUserPinConfig] = useState<string>('1234');
+  const [appLogoUrl, setAppLogoUrl] = useState<string>('');
 
   useEffect(() => {
-    // Fetch user PIN config live
+    // Fetch user PIN config & logo live
     const unsubscribeConfig = onSnapshot(doc(db, 'settings', 'config'), (snap) => {
-      if (snap.exists() && snap.data().userPin) {
-        setUserPinConfig(snap.data().userPin);
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.userPin) setUserPinConfig(data.userPin);
+        if (data.logoUrl !== undefined) setAppLogoUrl(data.logoUrl);
       } else {
-        // Initialize if not exists
-        setDoc(doc(db, 'settings', 'config'), { userPin: '1234' }, { merge: true }).catch(console.error);
+        setDoc(doc(db, 'settings', 'config'), { userPin: '1234', logoUrl: '' }, { merge: true }).catch(console.error);
       }
     }, (err) => {
       console.error("Failed to fetch settings", err);
@@ -163,7 +256,7 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-[#0a0502] flex items-center justify-center">
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
       </div>
     );
@@ -174,13 +267,13 @@ export default function App() {
       {/* Background Atmosphere */}
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-indigo-500/10 blur-[150px] rounded-full" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-blue-500/10 blur-[150px] rounded-full" />
+        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-cyan-500/10 blur-[150px] rounded-full" />
       </div>
 
       <div className="relative z-10 max-w-md mx-auto min-h-screen flex flex-col pt-6 px-4 pb-20">
         <AnimatePresence mode="wait">
           {view === 'landing' && (
-            <LandingPage key="landing" onEnter={handleEnterAsGuest} onAdminLogin={handleAdminAuthSuccess} userPinConfig={userPinConfig} />
+            <LandingPage key="landing" onEnter={handleEnterAsGuest} onAdminLogin={handleAdminAuthSuccess} userPinConfig={userPinConfig} appLogoUrl={appLogoUrl} />
           )}
           {view === 'user' && (
             <UserDashboard 
@@ -189,6 +282,7 @@ export default function App() {
               onLogout={handleLogout} 
               onAdminClick={() => setView('admin')} 
               isAdminSession={isAdminSession}
+              appLogoUrl={appLogoUrl}
             />
           )}
           {view === 'admin' && (
@@ -200,6 +294,7 @@ export default function App() {
               showNotifications={showNotifications}
               setShowNotifications={setShowNotifications}
               onUserView={() => setView('user')}
+              appLogoUrl={appLogoUrl}
             />
           )}
         </AnimatePresence>
@@ -208,9 +303,9 @@ export default function App() {
   );
 }
 
-// --- View Components ---
+// --- Landing Page ---
 
-function LandingPage({ onEnter, onAdminLogin, userPinConfig }: { onEnter: () => void, onAdminLogin: () => void, userPinConfig: string, key?: string }) {
+function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onEnter: () => void, onAdminLogin: () => void, userPinConfig: string, appLogoUrl?: string, key?: string }) {
   const [loginMode, setLoginMode] = useState<'none' | 'user' | 'admin'>('none');
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
@@ -218,8 +313,27 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig }: { onEnter: () => 
   const handleKeypadPress = (key: string) => {
     if (key === 'del') {
       setPin(prev => prev.slice(0, -1));
-    } else {
-      setPin(prev => prev + key);
+      setError(false);
+    } else if (pin.length < 12) {
+      const newPin = pin + key;
+      setPin(newPin);
+      setError(false);
+
+      if (loginMode === 'admin') {
+        if (newPin === '212650') {
+          onAdminLogin();
+        } else if (newPin.length >= 6) {
+          setError(true);
+          setTimeout(() => setError(false), 2000);
+        }
+      } else if (loginMode === 'user') {
+        if (newPin === userPinConfig) {
+          onEnter();
+        } else if (newPin.length >= userPinConfig.length) {
+          setError(true);
+          setTimeout(() => setError(false), 2000);
+        }
+      }
     }
   };
 
@@ -247,21 +361,25 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig }: { onEnter: () => 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="flex-1 flex flex-col items-center justify-center gap-14"
+      className="flex-1 flex flex-col items-center justify-center gap-10 py-6"
     >
-      <div className="text-center space-y-5">
+      <div className="text-center space-y-4">
         <motion.div 
           initial={{ scale: 0.8 }}
           animate={{ scale: 1 }}
-          className="w-20 h-20 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-2xl mx-auto flex items-center justify-center shadow-2xl shadow-indigo-500/20"
+          className="w-24 h-24 bg-gradient-to-br from-indigo-500 via-purple-600 to-cyan-500 rounded-3xl mx-auto flex items-center justify-center shadow-2xl shadow-indigo-500/20 border border-white/10 overflow-hidden relative"
         >
-          <TrendingUp size={40} className="text-white" />
+          {appLogoUrl ? (
+            <img src={appLogoUrl} alt="Unity Earning Logo" className="w-full h-full object-cover" />
+          ) : (
+            <TrendingUp size={44} className="text-white" />
+          )}
         </motion.div>
         <div>
-          <h1 className="text-4xl font-extrabold tracking-tight text-white mb-2">
+          <h1 className="text-3xl font-black tracking-tight text-white mb-1">
             {TRANSLATIONS.TITLE}
           </h1>
-          <p className="text-white/50 font-medium tracking-wider uppercase text-xs">
+          <p className="text-white/50 font-semibold tracking-widest uppercase text-xs">
             {TRANSLATIONS.SUBTITLE}
           </p>
         </div>
@@ -286,8 +404,8 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig }: { onEnter: () => 
             </button>
           </>
         ) : (
-          <form onSubmit={handleAuth} className="space-y-4 bg-[#18181b] p-6 rounded-3xl border border-white/5 shadow-xl">
-            <h2 className="text-center text-lg font-bold mb-2">
+          <form onSubmit={handleAuth} className="space-y-4 bg-[#18181b] p-6 rounded-3xl border border-white/10 shadow-xl">
+            <h2 className="text-center text-lg font-extrabold mb-1">
               {loginMode === 'admin' ? 'Admin Login' : 'User Login'}
             </h2>
             <div className="relative">
@@ -296,18 +414,18 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig }: { onEnter: () => 
                 readOnly
                 placeholder="Enter PIN"
                 value={pin}
-                className={`w-full bg-[#09090b] border ${error ? 'border-rose-500' : 'border-white/10'} rounded-2xl py-4 px-6 text-center text-xl tracking-[0.2em] font-mono focus:outline-none transition-colors cursor-default`}
+                className={`w-full bg-[#09090b] border ${error ? 'border-rose-500' : 'border-white/10'} rounded-2xl py-3.5 px-6 text-center text-xl tracking-[0.3em] font-mono focus:outline-none transition-colors cursor-default`}
               />
-              {error && <p className="text-rose-500 text-xs text-center mt-3 font-semibold">Incorrect PIN</p>}
+              {error && <p className="text-rose-500 text-xs text-center mt-2 font-semibold">Incorrect PIN</p>}
             </div>
             
-            <div className="grid grid-cols-3 gap-2 mt-4">
+            <div className="grid grid-cols-3 gap-2 mt-3">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
                 <button 
                   key={num} 
                   type="button" 
                   onClick={() => handleKeypadPress(num.toString())} 
-                  className="py-4 bg-[#27272a] rounded-xl font-bold text-2xl hover:bg-[#3f3f46] transition-colors active:scale-95 text-white/90"
+                  className="py-3.5 bg-[#27272a] rounded-xl font-bold text-xl hover:bg-[#3f3f46] transition-colors active:scale-95 text-white/90"
                 >
                   {num}
                 </button>
@@ -315,32 +433,32 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig }: { onEnter: () => 
               <button 
                 type="button" 
                 onClick={() => setLoginMode('none')} 
-                className="py-4 bg-[#27272a] rounded-xl font-semibold text-sm hover:bg-[#3f3f46] transition-colors active:scale-95 text-white/50"
+                className="py-3.5 bg-[#27272a] rounded-xl font-semibold text-xs hover:bg-[#3f3f46] transition-colors active:scale-95 text-white/50"
               >
                 BACK
               </button>
               <button 
                 type="button" 
                 onClick={() => handleKeypadPress('0')} 
-                className="py-4 bg-[#27272a] rounded-xl font-bold text-2xl hover:bg-[#3f3f46] transition-colors active:scale-95 text-white/90"
+                className="py-3.5 bg-[#27272a] rounded-xl font-bold text-xl hover:bg-[#3f3f46] transition-colors active:scale-95 text-white/90"
               >
                 0
               </button>
               <button 
                 type="button" 
                 onClick={() => handleKeypadPress('del')} 
-                className="py-4 bg-[#27272a] rounded-xl font-bold text-xl hover:bg-[#3f3f46] transition-colors active:scale-95 flex items-center justify-center text-rose-400"
+                className="py-3.5 bg-[#27272a] rounded-xl font-bold text-lg hover:bg-[#3f3f46] transition-colors active:scale-95 flex items-center justify-center text-rose-400"
               >
-                <Delete size={24} />
+                <Delete size={22} />
               </button>
             </div>
             
             <button 
               type="submit"
               disabled={!pin}
-              className="w-full mt-4 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-colors rounded-xl font-bold text-white shadow-lg shadow-indigo-600/20 active:scale-95 flex justify-center items-center gap-2"
+              className="w-full mt-3 py-3.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-colors rounded-xl font-bold text-white shadow-lg shadow-indigo-600/20 active:scale-95 flex justify-center items-center gap-2"
             >
-              <CheckCircle2 size={24} /> Login
+              <CheckCircle2 size={20} /> Login
             </button>
           </form>
         )}
@@ -349,17 +467,26 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig }: { onEnter: () => 
   );
 }
 
-function UserDashboard({ user, onLogout, onAdminClick, isAdminSession }: { 
+// --- User Dashboard ---
+
+function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUrl }: { 
   user: UserProfile | null, 
   onLogout: () => void, 
   onAdminClick: () => void,
   isAdminSession: boolean,
+  appLogoUrl?: string,
   key?: string
 }) {
   const [members, setMembers] = useState<TeamMember[]>([]);
-  const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
+  const [pinTargetMember, setPinTargetMember] = useState<TeamMember | null>(null);
+  const [memberPinInput, setMemberPinInput] = useState('');
+  const [pinError, setPinError] = useState(false);
+  const [activeMember, setActiveMember] = useState<TeamMember | null>(null);
+  const [showOptionModal, setShowOptionModal] = useState(false);
+  
+  const [activeModal, setActiveModal] = useState<'none' | 'withdraw' | 'seat_booking' | 'history' | 'post_booking' | 'invoice'>('none');
+  const [latestBooking, setLatestBooking] = useState<RequestData | null>(null);
   const [history, setHistory] = useState<RequestData[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'leader' | 'trainer'>('leader');
 
@@ -379,12 +506,56 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession }: {
     const unsubscribe = onSnapshot(
       q, 
       (snapshot) => {
-        setHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RequestData)));
+        const allReqs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RequestData));
+        setHistory(allReqs);
       },
       (error) => handleFirestoreError(error, OperationType.LIST, 'requests')
     );
     return () => unsubscribe();
   }, []);
+
+  const handleMemberClick = (member: TeamMember) => {
+    setPinTargetMember(member);
+    setMemberPinInput('');
+    setPinError(false);
+  };
+
+  const handleVerifyMemberPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pinTargetMember) return;
+    
+    const expectedPin = pinTargetMember.pin || '1234';
+    if (memberPinInput === expectedPin) {
+      setActiveMember(pinTargetMember);
+      setPinTargetMember(null);
+      setShowOptionModal(true);
+    } else {
+      setPinError(true);
+      setTimeout(() => setPinError(false), 2000);
+    }
+  };
+
+  const handleKeypadPress = (val: string) => {
+    if (!pinTargetMember) return;
+    if (val === 'del') {
+      setMemberPinInput(prev => prev.slice(0, -1));
+      setPinError(false);
+    } else if (memberPinInput.length < 8) {
+      const newPin = memberPinInput + val;
+      setMemberPinInput(newPin);
+      setPinError(false);
+
+      const expectedPin = pinTargetMember.pin || '1234';
+      if (newPin === expectedPin) {
+        setActiveMember(pinTargetMember);
+        setPinTargetMember(null);
+        setShowOptionModal(true);
+      } else if (newPin.length >= expectedPin.length) {
+        setPinError(true);
+        setTimeout(() => setPinError(false), 2000);
+      }
+    }
+  };
 
   const filteredMembers = members.filter(m => 
     m.role === activeTab && 
@@ -398,7 +569,12 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession }: {
       className="flex-1 flex flex-col gap-6"
     >
       <header className="flex items-center justify-between">
-        <h2 className="text-2xl font-extrabold tracking-tight text-white">{TRANSLATIONS.TITLE}</h2>
+        <div className="flex items-center gap-2.5">
+          {appLogoUrl && (
+            <img src={appLogoUrl} alt="Logo" className="w-8 h-8 rounded-xl object-cover border border-white/10" />
+          )}
+          <h2 className="text-2xl font-extrabold tracking-tight text-white">{TRANSLATIONS.TITLE}</h2>
+        </div>
         <div className="flex gap-2">
           {isAdminSession && (
             <button onClick={onAdminClick} className="p-2.5 bg-[#18181b] hover:bg-[#27272a] border border-white/10 text-indigo-400 rounded-xl transition-colors">
@@ -411,6 +587,7 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession }: {
         </div>
       </header>
 
+      {/* Role Selection Tabs */}
       <div className="flex bg-[#18181b] p-1.5 rounded-2xl border border-white/5">
         <button 
           onClick={() => setActiveTab('leader')}
@@ -439,29 +616,26 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession }: {
         </div>
 
         <div className="grid gap-3">
-          {filteredMembers.map(member => (
-            <motion.button
-              key={member.id}
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              onClick={() => setSelectedMember(member)}
-              className="bg-[#18181b] hover:bg-[#27272a] p-4 rounded-2xl border border-white/5 text-left flex items-center justify-between group transition-colors shadow-sm"
-            >
-              <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center border shadow-sm ${
-                  member.role === 'leader' 
-                    ? 'bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border-indigo-500/30 text-indigo-400'
-                    : 'bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border-emerald-500/30 text-emerald-400'
-                }`}>
-                  <UserIcon size={20} />
+          {filteredMembers.map(member => {
+            return (
+              <motion.button
+                key={member.id}
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                onClick={() => handleMemberClick(member)}
+                className="bg-[#18181b] hover:bg-[#27272a] p-3.5 rounded-2xl border border-white/5 text-left flex items-center justify-between group transition-colors shadow-sm"
+              >
+                <div className="flex items-center gap-3.5">
+                  <MemberDesignBadge name={member.name} role={member.role} size="lg" />
+                  <div>
+                    <h3 className="font-extrabold text-base text-white/95">{member.name}</h3>
+                    <p className="text-[11px] text-indigo-400/90 font-mono font-medium">PIN Access Required</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-bold text-lg text-white/90">{member.name}</h3>
-                </div>
-              </div>
-              <ChevronRight className="text-white/20 group-hover:text-white/50 transition-colors" size={20} />
-            </motion.button>
-          ))}
+                <ChevronRight className="text-white/20 group-hover:text-white/50 transition-colors" size={20} />
+              </motion.button>
+            );
+          })}
           {filteredMembers.length === 0 && (
             <div className="text-center py-12 text-white/20">
               <Users size={48} className="mx-auto mb-2 opacity-20" />
@@ -471,26 +645,200 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession }: {
         </div>
       </div>
 
-      <button 
-        onClick={() => setShowHistory(true)}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-white text-black hover:bg-white/90 transition-colors rounded-full shadow-lg flex items-center justify-center border border-black/10"
-      >
-        <HistoryIcon size={24} />
-      </button>
-
-      {/* Request Modal */}
+      {/* PIN Keypad Prompt for Selected Member */}
       <AnimatePresence>
-        {selectedMember && (
-          <RequestModal 
-            member={selectedMember} 
+        {pinTargetMember && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setPinTargetMember(null)} className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-[#18181b] p-6 rounded-3xl border border-white/10 shadow-2xl z-10">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-2 text-indigo-400">
+                  <Lock size={18} />
+                  <span className="text-xs font-bold uppercase tracking-wider">Account Access</span>
+                </div>
+                <button onClick={() => setPinTargetMember(null)} className="text-white/40 hover:text-white"><XCircle size={20} /></button>
+              </div>
+              
+              <div className="flex items-center gap-3 mb-4 bg-[#09090b] p-2.5 rounded-2xl border border-white/5">
+                <MemberDesignBadge name={pinTargetMember.name} role={pinTargetMember.role} size="md" />
+                <div>
+                  <h3 className="text-sm font-bold text-white">{pinTargetMember.name}</h3>
+                  <p className="text-[10px] text-white/50">Enter PIN to access Withdraw or Seat Booking</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleVerifyMemberPin} className="space-y-3">
+                <input 
+                  type="password"
+                  readOnly
+                  placeholder="PIN"
+                  value={memberPinInput}
+                  className={`w-full bg-[#09090b] border ${pinError ? 'border-rose-500' : 'border-white/10'} rounded-2xl py-3 px-4 text-center text-xl tracking-[0.3em] font-mono focus:outline-none`}
+                />
+                {pinError && <p className="text-rose-500 text-xs text-center font-semibold">Incorrect Member PIN</p>}
+
+                <div className="grid grid-cols-3 gap-2 pt-2">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+                    <button 
+                      key={num} 
+                      type="button" 
+                      onClick={() => handleKeypadPress(num.toString())} 
+                      className="py-3 bg-[#27272a] rounded-xl font-bold text-lg hover:bg-[#3f3f46] transition-colors text-white"
+                    >
+                      {num}
+                    </button>
+                  ))}
+                  <button type="button" onClick={() => setPinTargetMember(null)} className="py-3 bg-[#27272a] rounded-xl text-xs font-semibold text-white/40">CANCEL</button>
+                  <button type="button" onClick={() => handleKeypadPress('0')} className="py-3 bg-[#27272a] rounded-xl font-bold text-lg text-white">0</button>
+                  <button type="button" onClick={() => handleKeypadPress('del')} className="py-3 bg-[#27272a] rounded-xl text-rose-400 flex items-center justify-center"><Delete size={20} /></button>
+                </div>
+
+                <button 
+                  type="submit" 
+                  disabled={!memberPinInput}
+                  className="w-full mt-2 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20"
+                >
+                  Verify & Continue
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Option Selection Modal (Withdraw Request vs Seat Book) */}
+      <AnimatePresence>
+        {showOptionModal && activeMember && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowOptionModal(false)} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-[#121316] rounded-3xl p-6 border border-white/10 shadow-2xl space-y-5 z-10">
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div className="flex items-center gap-3">
+                  <MemberDesignBadge name={activeMember.name} role={activeMember.role} size="md" />
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400">Select Action</p>
+                    <h3 className="text-lg font-extrabold text-white">{activeMember.name}</h3>
+                  </div>
+                </div>
+                <button onClick={() => setShowOptionModal(false)} className="text-white/40 hover:text-white"><XCircle size={22} /></button>
+              </div>
+
+              <div className="grid gap-3">
+                <button
+                  onClick={() => {
+                    setShowOptionModal(false);
+                    setActiveModal('withdraw');
+                  }}
+                  className="p-4 bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-indigo-500/30 hover:border-indigo-500/60 rounded-2xl text-left flex items-center justify-between group transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
+                      <Banknote size={20} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white group-hover:text-indigo-300 transition-colors">Withdraw Request</h4>
+                      <p className="text-xs text-white/50">Send a withdrawal request</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={18} className="text-white/30 group-hover:text-white" />
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowOptionModal(false);
+                    setActiveModal('seat_booking');
+                  }}
+                  className="p-4 bg-gradient-to-r from-cyan-900/40 to-blue-900/40 border border-cyan-500/30 hover:border-cyan-500/60 rounded-2xl text-left flex items-center justify-between group transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30">
+                      <Sparkles size={20} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white group-hover:text-cyan-300 transition-colors">Seat Book</h4>
+                      <p className="text-xs text-white/50">Fill up seat booking form</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={18} className="text-white/30 group-hover:text-white" />
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowOptionModal(false);
+                    setActiveModal('history');
+                  }}
+                  className="p-4 bg-gradient-to-r from-emerald-900/40 to-teal-900/40 border border-emerald-500/30 hover:border-emerald-500/60 rounded-2xl text-left flex items-center justify-between group transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                      <HistoryIcon size={20} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white group-hover:text-emerald-300 transition-colors">মাই হিস্ট্রি (My Account History)</h4>
+                      <p className="text-xs text-white/50">শুধুমাত্র এই অ্যাকাউন্টের নিজস্ব রিকোয়েস্ট দেখুন</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={18} className="text-white/30 group-hover:text-white" />
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Main Request Forms & History Modals */}
+      <AnimatePresence>
+        {activeModal === 'seat_booking' && activeMember && (
+          <SeatBookingModal 
+            member={activeMember}
             sender={user}
-            onClose={() => setSelectedMember(null)} 
+            onClose={() => setActiveModal('none')}
+            onSuccessSubmitted={(req) => {
+              setLatestBooking(req);
+              setActiveModal('post_booking');
+            }}
+            onOpenHistory={() => setActiveModal('history')}
           />
         )}
-        {showHistory && (
+        {activeModal === 'post_booking' && latestBooking && (
+          <PostBookingSuccessModal 
+            booking={latestBooking}
+            onClose={() => setActiveModal('none')}
+            onViewInvoice={() => setActiveModal('invoice')}
+            onViewHistory={() => setActiveModal('history')}
+          />
+        )}
+        {activeModal === 'invoice' && latestBooking && (
+          <InvoiceReceiptModal 
+            booking={latestBooking}
+            onClose={() => setActiveModal('none')}
+          />
+        )}
+        {activeModal === 'withdraw' && activeMember && (
+          <WithdrawModal 
+            member={activeMember}
+            sender={user}
+            onClose={() => setActiveModal('none')}
+            onOpenHistory={() => setActiveModal('history')}
+          />
+        )}
+        {activeModal === 'history' && (
           <HistoryModal 
+            user={user}
+            activeMember={activeMember}
             history={history} 
-            onClose={() => setShowHistory(false)} 
+            onClose={() => setActiveModal('none')}
+            onOpenBooking={() => {
+              if (activeMember) {
+                setActiveModal('seat_booking');
+              } else {
+                setActiveModal('none');
+              }
+            }}
+            onSelectInvoice={(req) => {
+              setLatestBooking(req);
+              setActiveModal('invoice');
+            }}
           />
         )}
       </AnimatePresence>
@@ -498,8 +846,888 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession }: {
   );
 }
 
+// --- Post Seat Booking Confirmation Screen (Screenshot 1 Exact Layout) ---
+
+function PostBookingSuccessModal({ 
+  booking, onClose, onViewInvoice, onViewHistory 
+}: { 
+  booking: RequestData, 
+  onClose: () => void,
+  onViewInvoice: () => void,
+  onViewHistory: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/85 backdrop-blur-md" />
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }} 
+        animate={{ scale: 1, opacity: 1 }} 
+        exit={{ scale: 0.9, opacity: 0 }}
+        className="relative w-full max-w-sm bg-[#090d16] rounded-3xl p-6 border-2 border-amber-500/40 shadow-[0_0_30px_rgba(245,158,11,0.15)] flex flex-col items-center text-center gap-5 z-10"
+      >
+        <button onClick={onClose} className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors">
+          <XCircle size={22} />
+        </button>
+
+        {/* Amber Clock Header Icon */}
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mt-2 shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+          <Clock size={36} />
+        </div>
+
+        {/* Title */}
+        <h2 className="text-xl font-extrabold text-white tracking-tight">
+          {TRANSLATIONS.BOOKING_RECEIVED}
+        </h2>
+
+        {/* Dark Box with Pending Message */}
+        <div className="w-full bg-[#131926] border border-amber-500/20 rounded-2xl p-4 text-xs font-semibold leading-relaxed text-amber-200/90 shadow-inner">
+          {TRANSLATIONS.BOOKING_PENDING_MSG}
+        </div>
+
+        {/* Buttons */}
+        <div className="w-full space-y-3 pt-1">
+          <button
+            onClick={onViewInvoice}
+            className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs tracking-wider rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 active:scale-98"
+          >
+            <FileText size={16} />
+            {TRANSLATIONS.VIEW_INVOICE}
+          </button>
+
+          <button
+            onClick={onViewHistory}
+            className="w-full py-3.5 bg-[#171d2c] hover:bg-[#20283d] border border-white/10 text-white/90 font-extrabold text-xs tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 active:scale-98"
+          >
+            <HistoryIcon size={16} />
+            {TRANSLATIONS.MY_HISTORY_BTN}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// --- Seat Booking Digital Receipt / Invoice Modal (Screenshot 2 Exact Layout) ---
+
+function InvoiceReceiptModal({ 
+  booking, onClose 
+}: { 
+  booking: RequestData, 
+  onClose: () => void 
+}) {
+  const receiptRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
+
+  const issueDate = booking.createdAt?.toDate 
+    ? booking.createdAt.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  const refId = booking.refId || `#UE-${Math.floor(10000 + Math.random() * 90000)}`;
+
+  const handleDownload = async () => {
+    if (!receiptRef.current) return;
+    setDownloading(true);
+    try {
+      const canvas = await html2canvas(receiptRef.current, {
+        scale: 3,
+        useCORS: true,
+        backgroundColor: '#090d18',
+        logging: false,
+      });
+      const image = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = image;
+      link.download = `Seat_Booking_Receipt_${refId.replace('#', '')}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setDownloadSuccess(true);
+      setTimeout(() => setDownloadSuccess(false), 3000);
+    } catch (err) {
+      console.error('Failed to capture receipt canvas:', err);
+      window.print();
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 overflow-y-auto">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/85 backdrop-blur-md" />
+      
+      <div className="relative w-full max-w-sm z-10 my-auto flex flex-col gap-3">
+        {/* Capture Container for html2canvas */}
+        <motion.div 
+          ref={receiptRef}
+          initial={{ scale: 0.9, opacity: 0 }} 
+          animate={{ scale: 1, opacity: 1 }} 
+          exit={{ scale: 0.9, opacity: 0 }}
+          className="w-full bg-[#090d18] rounded-3xl p-5 border-2 border-cyan-500/40 shadow-[0_0_35px_rgba(6,182,212,0.2)] flex flex-col gap-3.5 relative overflow-hidden"
+        >
+          {/* Glow Accent Top */}
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-emerald-400" />
+
+          {/* Receipt Header Bar */}
+          <div className="flex items-center justify-between pb-3 border-b border-white/10 pt-1">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500 via-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-cyan-500/20 shrink-0">
+                <Shield size={22} />
+              </div>
+              <div>
+                <h2 className="text-base font-black text-white tracking-wider">UNITY EARNING</h2>
+                <p className="text-[9px] font-extrabold text-cyan-400 tracking-widest uppercase">— SEAT BOOKING RECEIPT —</p>
+              </div>
+            </div>
+            <Badge status={booking.status || 'pending'} />
+          </div>
+
+          {/* Invoice Grid Details */}
+          <div className="grid grid-cols-2 gap-2.5">
+            {/* REF ID */}
+            <div className="bg-[#121826] border border-white/10 rounded-2xl p-3">
+              <p className="text-[9px] font-bold uppercase text-white/40 tracking-wider">REF ID</p>
+              <p className="text-xs font-black text-cyan-300 font-mono mt-0.5">{refId}</p>
+            </div>
+
+            {/* ISSUE DATE */}
+            <div className="bg-[#121826] border border-white/10 rounded-2xl p-3 flex justify-between items-center">
+              <div>
+                <p className="text-[9px] font-bold uppercase text-white/40 tracking-wider">ISSUE DATE</p>
+                <p className="text-xs font-bold text-white mt-0.5">{issueDate}</p>
+              </div>
+              <Calendar size={16} className="text-cyan-400/50" />
+            </div>
+          </div>
+
+          {/* CANDIDATE */}
+          <div className="bg-[#121826] border border-white/10 rounded-2xl p-3 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/30">
+              <UserIcon size={16} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[9px] font-bold uppercase text-white/40 tracking-wider">CANDIDATE (আবেদনকারী)</p>
+              <p className="text-sm font-black text-white truncate">{booking.senderName || 'N/A'}</p>
+            </div>
+          </div>
+
+          {/* COUNSELOR */}
+          <div className="bg-[#121826] border border-white/10 rounded-2xl p-3 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0 border border-cyan-500/30">
+              <Send size={16} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[9px] font-bold uppercase text-white/40 tracking-wider">COUNSELOR / LEADER (কাউন্সেলর)</p>
+              <p className="text-sm font-black text-white truncate">{booking.recipientName || 'N/A'}</p>
+            </div>
+          </div>
+
+          {/* FEE & PAYMENT TRX */}
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="bg-[#121826] border border-white/10 rounded-2xl p-3">
+              <p className="text-[9px] font-bold uppercase text-white/40 tracking-wider">FEE (ফি)</p>
+              <p className="text-lg font-black text-emerald-400 font-mono mt-0.5">৳{booking.amount}</p>
+            </div>
+
+            <div className="bg-[#121826] border border-white/10 rounded-2xl p-3">
+              <div className="flex justify-between items-center">
+                <p className="text-[9px] font-bold uppercase text-white/40 tracking-wider">{booking.paymentMethod || 'BKASH'}</p>
+                <span className="text-[8px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">VERIFIED</span>
+              </div>
+              <p className="text-xs font-extrabold text-white font-mono truncate mt-0.5">
+                TRX: <span className="text-cyan-300">{booking.trxDigit || 'N/A'}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* PHONE / WHATSAPP */}
+          <div className="bg-[#121826] border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/30">
+                <Smartphone size={16} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[9px] font-bold uppercase text-white/40 tracking-wider">WHATSAPP / PHONE</p>
+                <p className="text-xs font-black text-white font-mono truncate">{booking.whatsappNumber || booking.senderNumber || 'N/A'}</p>
+              </div>
+            </div>
+            <span className="text-[8px] font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20 shrink-0">SAFE</span>
+          </div>
+
+          {/* Bottom Receipt Stamp */}
+          <div className="border-t border-dashed border-white/15 pt-3 pb-1 flex items-center justify-between text-[10px] text-white/50">
+            <div className="flex items-center gap-1.5 text-cyan-400 font-bold">
+              <CheckCircle2 size={14} /> OFFICIAL DIGITAL RECEIPT
+            </div>
+            <span className="font-mono text-[9px] text-white/40">UNITY EARNING PLATFORM</span>
+          </div>
+        </motion.div>
+
+        {/* Success Toast */}
+        {downloadSuccess && (
+          <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold py-2 px-3 rounded-xl text-center flex items-center justify-center gap-2">
+            <CheckCircle2 size={16} /> রসিদ সফলভাবে ডাউনলোড হয়েছে! (Downloaded!)
+          </motion.div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <button
+            onClick={onClose}
+            className="py-3.5 bg-[#121826] hover:bg-[#1a2336] border border-white/10 text-white font-bold text-xs rounded-2xl transition-all flex items-center justify-center gap-1.5 active:scale-98"
+          >
+            <XCircle size={18} className="text-white/60" /> CLOSE (বন্ধ করুন)
+          </button>
+          <button
+            onClick={handleDownload}
+            disabled={downloading}
+            className="py-3.5 bg-gradient-to-r from-blue-600 via-cyan-500 to-teal-400 hover:opacity-95 text-white font-black text-xs rounded-2xl shadow-xl shadow-cyan-500/30 transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50"
+          >
+            {downloading ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                প্রসেসিং...
+              </>
+            ) : (
+              <>
+                <Download size={18} /> ডাউনলোড (DOWNLOAD)
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Seat Booking Form Modal ---
+
+function SeatBookingModal({ 
+  member, sender, onClose, onSuccessSubmitted, onOpenHistory 
+}: { 
+  member: TeamMember, 
+  sender: UserProfile | null, 
+  onClose: () => void,
+  onSuccessSubmitted: (req: RequestData) => void,
+  onOpenHistory: () => void
+}) {
+  const [fullName, setFullName] = useState(sender?.name || '');
+  const [amount, setAmount] = useState('');
+  const [trxDigit, setTrxDigit] = useState('');
+  const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'BKASH' | 'NAGAD' | 'ROCKET' | 'CASH'>('BKASH');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fullName || !whatsappNumber || !amount) return;
+    setLoading(true);
+    const generatedRef = `#UE-${Math.floor(10000 + Math.random() * 90000)}`;
+
+    try {
+      const docRef = await addDoc(collection(db, 'requests'), {
+        refId: generatedRef,
+        type: 'seat_booking',
+        senderId: sender?.uid || 'guest',
+        senderName: fullName,
+        senderNumber: whatsappNumber,
+        senderRole: sender?.role || 'user',
+        recipientName: member.name,
+        recipientNumber: member.number || '',
+        amount: Number(amount),
+        trxDigit: trxDigit || '',
+        whatsappNumber: whatsappNumber,
+        paymentMethod: paymentMethod,
+        note: `Seat Booking via ${paymentMethod}`,
+        status: 'pending',
+        createdAt: serverTimestamp()
+      });
+
+      // Save request ID to local storage so user history shows it!
+      saveMySubmittedRequestId(docRef.id);
+
+      const createdReq: RequestData = {
+        id: docRef.id,
+        refId: generatedRef,
+        type: 'seat_booking',
+        senderId: sender?.uid || 'guest',
+        senderName: fullName,
+        senderNumber: whatsappNumber,
+        senderRole: sender?.role || 'user',
+        recipientName: member.name,
+        amount: Number(amount),
+        trxDigit: trxDigit || '',
+        whatsappNumber: whatsappNumber,
+        paymentMethod: paymentMethod,
+        status: 'pending',
+        createdAt: new Date()
+      };
+
+      onSuccessSubmitted(createdReq);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'requests');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isLeader = member.role === 'leader';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 overflow-y-auto">
+      <motion.div 
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 bg-black/80 backdrop-blur-md" 
+      />
+      <motion.div 
+        initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+        className="relative w-full max-w-sm bg-[#0a0d14] border border-[#1e293b] rounded-3xl p-5 shadow-2xl my-auto z-10 flex flex-col gap-4 overflow-hidden"
+      >
+        {/* Top Glow bar */}
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-cyan-400 to-blue-500" />
+
+        {/* Form Header */}
+        <div className="text-center space-y-1 pt-2">
+          <div className="w-10 h-10 rounded-2xl bg-[#111827] border border-cyan-500/30 text-cyan-400 flex items-center justify-center mx-auto shadow-[0_0_15px_rgba(6,182,212,0.15)]">
+            <Shield size={22} />
+          </div>
+          <h2 className="text-xs font-black tracking-widest text-cyan-400 uppercase">
+            UNITY EARNING ENROLLMENT
+          </h2>
+          <h1 className="text-xl font-black text-white tracking-wide">
+            SEAT BOOKING
+          </h1>
+          <p className="text-[11px] font-semibold text-white/50">
+            ( সিট বুকিং ফর্ম )
+          </p>
+        </div>
+
+        {/* Selected Member Header Card */}
+        <div className="bg-[#111827] border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <MemberDesignBadge name={member.name} role={member.role} size="md" />
+            <div>
+              <p className={`text-[9px] uppercase font-bold tracking-wider ${isLeader ? 'text-indigo-400' : 'text-emerald-400'}`}>
+                {isLeader ? 'TEAM LEADER' : 'TEAM TRAINER'}
+              </p>
+              <h3 className="text-sm font-extrabold text-white">{member.name}</h3>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-colors">
+            <XCircle size={18} />
+          </button>
+        </div>
+
+        {/* Form Fields */}
+        <form onSubmit={handleSubmit} className="space-y-3.5">
+          {/* Full Name */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-white/60 flex items-center gap-1.5 pl-1">
+              <UserIcon size={12} className="text-cyan-400" /> YOUR FULL NAME
+            </label>
+            <input 
+              type="text"
+              required
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="Enter full name"
+              className="w-full bg-[#111827] border border-white/10 rounded-xl py-3 px-4 text-xs font-semibold text-white focus:outline-none focus:border-cyan-500/60 transition-all shadow-inner"
+            />
+          </div>
+
+          {/* Amount & Trx Digit Row */}
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-white/60 flex items-center gap-1.5 pl-1">
+                <Banknote size={12} className="text-cyan-400" /> Amount
+              </label>
+              <input 
+                type="number"
+                required
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-full bg-[#111827] border border-white/10 rounded-xl py-3 px-3 text-xs font-semibold text-white focus:outline-none focus:border-cyan-500/60 transition-all shadow-inner font-mono"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-white/60 flex items-center gap-1.5 pl-1">
+                <Send size={12} className="text-cyan-400" /> Trx Digit
+              </label>
+              <input 
+                type="text"
+                value={trxDigit}
+                onChange={(e) => setTrxDigit(e.target.value)}
+                placeholder="Trx ID"
+                className="w-full bg-[#111827] border border-white/10 rounded-xl py-3 px-3 text-xs font-semibold text-white focus:outline-none focus:border-cyan-500/60 transition-all shadow-inner font-mono"
+              />
+            </div>
+          </div>
+
+          {/* WhatsApp Number */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-white/60 flex items-center gap-1.5 pl-1">
+              <Smartphone size={12} className="text-cyan-400" /> WhatsApp Number
+            </label>
+            <input 
+              type="tel"
+              required
+              value={whatsappNumber}
+              onChange={(e) => setWhatsappNumber(e.target.value)}
+              placeholder="017xxxxxxxx"
+              className="w-full bg-[#111827] border border-white/10 rounded-xl py-3 px-4 text-xs font-semibold text-white focus:outline-none focus:border-cyan-500/60 transition-all shadow-inner font-mono"
+            />
+          </div>
+
+          {/* Payment Method Selectors */}
+          <div className="space-y-1.5 pt-1">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 pl-1">Payment Method</label>
+            <div className="grid grid-cols-4 gap-1.5">
+              {(['BKASH', 'NAGAD', 'ROCKET', 'CASH'] as const).map(method => (
+                <button
+                  key={method}
+                  type="button"
+                  onClick={() => setPaymentMethod(method)}
+                  className={`py-2 rounded-xl text-[10px] font-black transition-all border ${
+                    paymentMethod === method 
+                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.3)]' 
+                      : 'bg-[#111827] text-white/50 border-white/5 hover:bg-white/5'
+                  }`}
+                >
+                  {method}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Reserve Seat Action Button */}
+          <button 
+            type="submit"
+            disabled={loading}
+            className="w-full py-3.5 bg-gradient-to-r from-blue-600 via-cyan-500 to-teal-400 hover:opacity-95 disabled:opacity-50 text-white rounded-xl font-extrabold text-sm tracking-widest uppercase shadow-lg shadow-cyan-500/25 transition-all mt-4 active:scale-98 flex items-center justify-center gap-2"
+          >
+            {loading ? 'Processing...' : TRANSLATIONS.RESERVE_SEAT}
+          </button>
+        </form>
+
+        {/* Bottom Tab Options inside Modal */}
+        <div className="flex bg-[#111827] p-1 rounded-2xl border border-white/5 mt-1">
+          <button 
+            type="button"
+            className="flex-1 py-2 rounded-xl text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center justify-center gap-1.5 shadow-sm"
+          >
+            <Sparkles size={14} /> Booking
+          </button>
+          <button 
+            type="button"
+            onClick={onOpenHistory}
+            className="flex-1 py-2 rounded-xl text-xs font-bold text-white/50 hover:text-white flex items-center justify-center gap-1.5 transition-colors"
+          >
+            <HistoryIcon size={14} /> My History
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// --- Redesigned Withdraw Form Modal ---
+
+function WithdrawModal({ 
+  member, sender, onClose, onOpenHistory 
+}: { 
+  member: TeamMember, 
+  sender: UserProfile | null, 
+  onClose: () => void,
+  onOpenHistory: () => void
+}) {
+  const [senderName, setSenderName] = useState(sender?.name || '');
+  const [senderNumber, setSenderNumber] = useState('');
+  const [amount, setAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'BKASH' | 'NAGAD' | 'ROCKET' | 'CASH'>('BKASH');
+  const [note, setNote] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!senderName || !senderNumber || !amount) return;
+    setLoading(true);
+    try {
+      const docRef = await addDoc(collection(db, 'requests'), {
+        type: 'withdraw',
+        senderId: sender?.uid || 'guest',
+        senderName: senderName,
+        senderNumber: senderNumber,
+        senderRole: sender?.role || 'user',
+        recipientName: member.name,
+        recipientNumber: member.number || '',
+        amount: Number(amount),
+        paymentMethod: paymentMethod,
+        note: note,
+        status: 'pending',
+        createdAt: serverTimestamp()
+      });
+
+      // Save to local storage for user history isolation
+      saveMySubmittedRequestId(docRef.id);
+
+      setSubmitted(true);
+      setTimeout(onClose, 2000);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'requests');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (submitted) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+        <GlassCard className="p-10 text-center space-y-4 max-w-xs mx-auto">
+          <CheckCircle2 size={56} className="text-emerald-400 mx-auto animate-bounce" />
+          <h2 className="text-xl font-bold text-white">{TRANSLATIONS.SUCCESS_SUBMIT}</h2>
+          <p className="text-xs text-white/60">Withdrawal request successfully sent to Admin.</p>
+        </GlassCard>
+      </div>
+    );
+  }
+
+  const isLeader = member.role === 'leader';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 overflow-y-auto">
+      <motion.div 
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 bg-black/80 backdrop-blur-md" 
+      />
+      <motion.div 
+        initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+        className="relative w-full max-w-sm bg-[#0e1017] rounded-3xl p-5 border border-indigo-500/30 shadow-2xl my-auto z-10 flex flex-col gap-4 overflow-hidden"
+      >
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
+
+        <div className="flex items-center justify-between border-b border-white/10 pb-3">
+          <div className="flex items-center gap-3">
+            <MemberDesignBadge name={member.name} role={member.role} size="md" />
+            <div>
+              <p className="text-[9px] font-extrabold uppercase tracking-widest text-indigo-400">WITHDRAWAL REQUEST</p>
+              <h3 className="text-base font-extrabold text-white">{member.name}</h3>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-white/40 hover:text-white"><XCircle size={20} /></button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase text-white/60 pl-1">{TRANSLATIONS.NAME} *</label>
+            <input 
+              type="text" 
+              required
+              value={senderName}
+              onChange={(e) => setSenderName(e.target.value)}
+              placeholder="Your Full Name"
+              className="w-full bg-[#181a24] border border-white/10 rounded-xl py-3 px-4 text-xs font-semibold text-white focus:outline-none focus:border-indigo-500/60"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase text-white/60 pl-1">{TRANSLATIONS.NUMBER} *</label>
+              <input 
+                type="tel" 
+                required
+                value={senderNumber}
+                onChange={(e) => setSenderNumber(e.target.value)}
+                placeholder="Phone / bKash"
+                className="w-full bg-[#181a24] border border-white/10 rounded-xl py-3 px-3 text-xs font-semibold text-white focus:outline-none focus:border-indigo-500/60 font-mono"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase text-white/60 pl-1">{TRANSLATIONS.AMOUNT} *</label>
+              <input 
+                type="number" 
+                required
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-full bg-[#181a24] border border-white/10 rounded-xl py-3 px-3 text-xs font-semibold text-white focus:outline-none focus:border-indigo-500/60 font-mono"
+              />
+            </div>
+          </div>
+
+          {/* Payment Method */}
+          <div className="space-y-1.5 pt-1">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-white/50 pl-1">Payment Method</label>
+            <div className="grid grid-cols-4 gap-1.5">
+              {(['BKASH', 'NAGAD', 'ROCKET', 'CASH'] as const).map(method => (
+                <button
+                  key={method}
+                  type="button"
+                  onClick={() => setPaymentMethod(method)}
+                  className={`py-2 rounded-xl text-[10px] font-black transition-all border ${
+                    paymentMethod === method 
+                      ? 'bg-indigo-500/20 text-indigo-300 border-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.3)]' 
+                      : 'bg-[#181a24] text-white/50 border-white/5 hover:bg-white/5'
+                  }`}
+                >
+                  {method}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase text-white/60 pl-1">{TRANSLATIONS.NOTE}</label>
+            <textarea 
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Withdraw details / reference..."
+              rows={2}
+              className="w-full bg-[#181a24] border border-white/10 rounded-xl py-2.5 px-4 text-xs font-semibold text-white focus:outline-none focus:border-indigo-500/60 resize-none"
+            />
+          </div>
+
+          <button 
+            type="submit"
+            disabled={loading}
+            className="w-full py-3.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 disabled:opacity-50 text-white rounded-xl font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-indigo-600/20 transition-all mt-2 active:scale-98"
+          >
+            {loading ? 'Submitting...' : 'Submit Withdraw Request'}
+          </button>
+        </form>
+
+        {/* Bottom Tab Options */}
+        <div className="flex bg-[#181a24] p-1 rounded-2xl border border-white/5 mt-1">
+          <button 
+            type="button"
+            className="flex-1 py-2 rounded-xl text-xs font-bold bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 flex items-center justify-center gap-1.5 shadow-sm"
+          >
+            <Banknote size={14} /> Withdraw
+          </button>
+          <button 
+            type="button"
+            onClick={onOpenHistory}
+            className="flex-1 py-2 rounded-xl text-xs font-bold text-white/50 hover:text-white flex items-center justify-center gap-1.5 transition-colors"
+          >
+            <HistoryIcon size={14} /> My History
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// --- Isolated User History Modal ---
+
+function HistoryModal({ 
+  user, activeMember, history, onClose, onOpenBooking, onSelectInvoice
+}: { 
+  user: UserProfile | null,
+  activeMember?: TeamMember | null,
+  history: RequestData[], 
+  onClose: () => void,
+  onOpenBooking?: () => void,
+  onSelectInvoice?: (req: RequestData) => void
+}) {
+  const [subTab, setSubTab] = useState<'seat_booking' | 'withdraw'>('seat_booking');
+
+  // Strict user isolation: show requests created for this specific active member account or on this device
+  const mySubmittedIds = getMySubmittedRequestIds();
+  const userFiltered = history.filter(req => {
+    if (activeMember) {
+      const targetName = activeMember.name.trim().toLowerCase();
+      const matchRecipient = req.recipientName && req.recipientName.trim().toLowerCase() === targetName;
+      const matchLeader = req.counselorLeader && req.counselorLeader.trim().toLowerCase() === targetName;
+      const matchMemberUid = req.submittedByUid === activeMember.id;
+      return matchRecipient || matchLeader || matchMemberUid;
+    }
+    return mySubmittedIds.includes(req.id) || (user && req.senderId === user.uid);
+  });
+
+  const seatBookings = userFiltered.filter(h => h.type === 'seat_booking');
+  const withdraws = userFiltered.filter(h => h.type === 'withdraw' || !h.type);
+  const filteredHistory = subTab === 'seat_booking' ? seatBookings : withdraws;
+
+  const getPaymentBrandStyle = (method?: string) => {
+    const m = (method || '').toUpperCase();
+    if (m === 'BKASH') return 'bg-pink-500/15 text-pink-300 border-pink-500/30';
+    if (m === 'NAGAD') return 'bg-orange-500/15 text-orange-300 border-orange-500/30';
+    if (m === 'ROCKET') return 'bg-purple-500/15 text-purple-300 border-purple-500/30';
+    return 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30';
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 overflow-y-auto">
+      <motion.div 
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 bg-black/85 backdrop-blur-md" 
+      />
+      <motion.div 
+        initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+        className="relative w-full max-w-sm h-[85vh] bg-[#0c0f17] rounded-3xl p-5 border border-white/10 shadow-2xl flex flex-col z-10 my-auto overflow-hidden"
+      >
+        {/* Top Glow Accent Bar */}
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-500" />
+
+        {/* Header */}
+        <div className="flex items-center justify-between pb-3 border-b border-white/10 pt-1">
+          <div>
+            <h2 className="text-base font-black text-white flex items-center gap-2">
+              <HistoryIcon className="text-cyan-400" size={20} />
+              অনুরোধের ইতিহাস
+            </h2>
+            <p className="text-[10px] text-white/50 font-medium">My Request History & Statements</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white/10 text-white/50 hover:text-white rounded-xl transition-colors">
+            <XCircle size={22} />
+          </button>
+        </div>
+
+        {/* Section Segment Tabs */}
+        <div className="grid grid-cols-2 bg-[#121622] p-1 rounded-2xl border border-white/10 my-3 gap-1">
+          <button 
+            onClick={() => setSubTab('seat_booking')}
+            className={`py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+              subTab === 'seat_booking' 
+                ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm' 
+                : 'text-white/40 hover:text-white'
+            }`}
+          >
+            <Sparkles size={14} />
+            Seat Booking ({seatBookings.length})
+          </button>
+          <button 
+            onClick={() => setSubTab('withdraw')}
+            className={`py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+              subTab === 'withdraw' 
+                ? 'bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm' 
+                : 'text-white/40 hover:text-white'
+            }`}
+          >
+            <Banknote size={14} />
+            Withdraw ({withdraws.length})
+          </button>
+        </div>
+
+        {/* History Item List */}
+        <div className="flex-1 overflow-y-auto space-y-3.5 pr-1 custom-scrollbar">
+          {filteredHistory.map(req => {
+            const formattedDate = req.createdAt?.toDate 
+              ? req.createdAt.toDate().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+              : 'Just now';
+
+            return (
+              <div key={req.id} className="bg-[#121622] p-4 rounded-2xl border border-white/10 space-y-3 shadow-md hover:border-white/20 transition-all">
+                {/* Top Badge Row */}
+                <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] font-black uppercase text-white/50 bg-white/5 px-2 py-0.5 rounded-md border border-white/5">
+                      {req.type === 'seat_booking' ? 'Seat Book' : 'Withdrawal'}
+                    </span>
+                    {req.paymentMethod && (
+                      <span className={`text-[9px] font-black px-2 py-0.5 rounded-md border ${getPaymentBrandStyle(req.paymentMethod)}`}>
+                        {req.paymentMethod}
+                      </span>
+                    )}
+                  </div>
+                  <Badge status={req.status || 'pending'} />
+                </div>
+
+                {/* Main Info Box */}
+                <div className="flex justify-between items-start gap-2">
+                  <div className="space-y-1 min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+                      COUNSELOR / LEADER (কাউন্সেলর)
+                    </p>
+                    <h3 className="font-extrabold text-white text-sm truncate">{req.recipientName || 'N/A'}</h3>
+                    
+                    {req.senderName && (
+                      <p className="text-xs text-white/70">
+                        Candidate: <strong className="text-cyan-300">{req.senderName}</strong>
+                      </p>
+                    )}
+                    <p className="text-[10px] text-white/40 font-mono flex items-center gap-1">
+                      <Clock size={11} className="text-white/30" /> {formattedDate}
+                    </p>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">FEE / AMOUNT</p>
+                    <p className="font-mono font-black text-base text-emerald-400">৳{req.amount}</p>
+                  </div>
+                </div>
+
+                {/* Trx & Contact Details Box */}
+                {(req.trxDigit || req.whatsappNumber || req.senderNumber) && (
+                  <div className="bg-[#0a0d14] p-2.5 rounded-xl text-xs text-white/80 font-mono border border-white/5 grid grid-cols-1 gap-1">
+                    {req.trxDigit && (
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span className="text-white/50">Trx ID / Digit:</span>
+                        <strong className="text-cyan-300 tracking-wider">{req.trxDigit}</strong>
+                      </div>
+                    )}
+                    {(req.whatsappNumber || req.senderNumber) && (
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span className="text-white/50">WhatsApp / Phone:</span>
+                        <strong className="text-emerald-300">{req.whatsappNumber || req.senderNumber}</strong>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {req.note && (
+                  <p className="text-xs text-white/70 italic bg-[#0a0d14] p-2.5 rounded-xl border border-white/5">
+                    "{req.note}"
+                  </p>
+                )}
+
+                {/* Receipt Trigger Button */}
+                {req.type === 'seat_booking' && onSelectInvoice && (
+                  <button
+                    onClick={() => onSelectInvoice(req)}
+                    className="w-full py-2.5 bg-gradient-to-r from-cyan-500/15 to-blue-500/15 hover:from-cyan-500/25 hover:to-blue-500/25 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-98 shadow-sm"
+                  >
+                    <FileText size={15} /> View & Download Invoice Receipt (ইনভয়েস দেখুন)
+                  </button>
+                )}
+              </div>
+            );
+          })}
+
+          {filteredHistory.length === 0 && (
+            <div className="text-center py-16 text-white/30 text-xs space-y-2">
+              <HistoryIcon size={40} className="mx-auto text-white/20" />
+              <p className="font-bold text-white/40">কোন রেকর্ড পাওয়া যায়নি (No Records Found)</p>
+              <p className="text-[11px] text-white/30">Your {subTab === 'seat_booking' ? 'seat booking' : 'withdraw'} requests will appear here</p>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Close Button */}
+        <div className="pt-3 border-t border-white/10 mt-auto">
+          <button 
+            type="button"
+            onClick={onClose}
+            className="w-full py-3 bg-[#121622] hover:bg-[#1a1f30] text-white font-extrabold text-xs rounded-2xl border border-white/10 transition-colors flex items-center justify-center gap-2"
+          >
+            <XCircle size={16} className="text-white/50" /> CLOSE (বন্ধ করুন)
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// --- Admin Dashboard ---
+
 function AdminDashboard({ 
-  user, onLogout, notifications, showNotifications, setShowNotifications, onUserView 
+  user, onLogout, notifications, showNotifications, setShowNotifications, onUserView, appLogoUrl 
 }: { 
   user: UserProfile, 
   onLogout: () => void, 
@@ -507,10 +1735,10 @@ function AdminDashboard({
   showNotifications: boolean,
   setShowNotifications: (s: boolean) => void,
   onUserView: () => void,
+  appLogoUrl?: string,
   key?: string
 }) {
-  const [loadingId, setLoadingId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'members' | 'history' | 'settings'>('members');
+  const [activeTab, setActiveTab] = useState<'seat_booking' | 'withdraw' | 'members' | 'settings'>('seat_booking');
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [showAddMember, setShowAddMember] = useState(false);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
@@ -527,14 +1755,20 @@ function AdminDashboard({
     return () => unsubscribe();
   }, []);
 
+  const pendingCount = notifications.filter(n => n.status === 'pending').length;
+
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 flex flex-col gap-6">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 flex flex-col gap-5">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-xl">
-            <ShieldCheck size={20} />
+          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center overflow-hidden">
+            {appLogoUrl ? (
+              <img src={appLogoUrl} alt="Logo" className="w-full h-full object-cover" />
+            ) : (
+              <ShieldCheck size={20} />
+            )}
           </div>
-          <h2 className="text-xl font-extrabold text-white">Admin</h2>
+          <h2 className="text-xl font-extrabold text-white">Admin Panel</h2>
         </div>
         <div className="flex gap-2">
           <button 
@@ -542,7 +1776,7 @@ function AdminDashboard({
             className="p-2.5 bg-[#18181b] hover:bg-[#27272a] border border-white/10 rounded-xl relative transition-colors text-white/80"
           >
             <Bell size={20} />
-            {notifications.filter(n => n.status === 'pending').length > 0 && (
+            {pendingCount > 0 && (
               <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.6)]" />
             )}
           </button>
@@ -555,30 +1789,40 @@ function AdminDashboard({
         </div>
       </header>
 
-      <div className="flex bg-[#18181b] p-1.5 rounded-2xl border border-white/5">
+      {/* Admin Sub-Navigation */}
+      <div className="grid grid-cols-4 bg-[#18181b] p-1 rounded-2xl border border-white/5 text-[11px] font-bold">
         <button 
-          onClick={() => setActiveTab('members')}
-          className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all ${activeTab === 'members' ? 'bg-white text-black shadow-md' : 'text-white/60 hover:text-white'}`}
+          onClick={() => setActiveTab('seat_booking')}
+          className={`py-2.5 rounded-xl transition-all ${activeTab === 'seat_booking' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-white/60 hover:text-white'}`}
         >
-          {TRANSLATIONS.DASHBOARD}
+          Seat Book
         </button>
         <button 
-          onClick={() => setActiveTab('history')}
-          className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all ${activeTab === 'history' ? 'bg-white text-black shadow-md' : 'text-white/60 hover:text-white'}`}
+          onClick={() => setActiveTab('withdraw')}
+          className={`py-2.5 rounded-xl transition-all ${activeTab === 'withdraw' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' : 'text-white/60 hover:text-white'}`}
         >
-          {TRANSLATIONS.HISTORY}
+          Withdraw
+        </button>
+        <button 
+          onClick={() => setActiveTab('members')}
+          className={`py-2.5 rounded-xl transition-all ${activeTab === 'members' ? 'bg-white/10 text-white shadow-sm' : 'text-white/60 hover:text-white'}`}
+        >
+          Members
         </button>
         <button 
           onClick={() => setActiveTab('settings')}
-          className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all ${activeTab === 'settings' ? 'bg-white text-black shadow-md' : 'text-white/60 hover:text-white'}`}
+          className={`py-2.5 rounded-xl transition-all ${activeTab === 'settings' ? 'bg-white/10 text-white shadow-sm' : 'text-white/60 hover:text-white'}`}
         >
           Settings
         </button>
       </div>
 
       <div className="flex-1">
+        {activeTab === 'seat_booking' && <AdminRequestsView requestType="seat_booking" />}
+        {activeTab === 'withdraw' && <AdminRequestsView requestType="withdraw" />}
+
         {activeTab === 'members' && (
-          <div className="space-y-6">
+          <div className="space-y-5">
             <motion.button 
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
@@ -604,84 +1848,55 @@ function AdminDashboard({
               </button>
             </div>
             
-            <div className="space-y-4">
-              <div className="grid gap-3">
-                {members.filter(m => m.role === memberTab).map(member => (
-                  <div key={member.id} className="bg-[#18181b] p-4 rounded-2xl border border-white/5 flex items-center justify-between shadow-sm">
-                    <div className="flex items-center gap-4 min-w-0 flex-1">
-                      <div className="w-10 h-10 bg-[#27272a] rounded-full flex items-center justify-center text-white/70 shrink-0 border border-white/5">
-                        <UserIcon size={18} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-semibold text-[15px] text-white/90 truncate">{member.name}</h3>
-                      </div>
-                    </div>
-                    <div className="flex gap-1.5 shrink-0 ml-3">
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          console.log('Initiating edit for:', member.name);
-                          setEditingMember(member);
-                        }}
-                        className="p-2.5 flex items-center justify-center rounded-xl bg-white/5 text-white/60 hover:bg-white/10 hover:text-white transition-all active:scale-95 border border-transparent hover:border-white/10"
-                        title="Edit Member"
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          
-                          if (loadingId) return;
-                          
-                          const memberId = member.id;
-                          
-                          console.log('List: Initiating delete for ID:', memberId);
-                          setLoadingId(memberId);
-                          
-                          try {
-                            const memberDocRef = doc(db, 'teamMembers', memberId);
-                            await deleteDoc(memberDocRef);
-                            console.log('List: Successfully deleted document:', memberId);
-                          } catch (err: any) {
-                            console.error('List: DELETE FAILED:', err);
-                            alert('ডিলিট করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।');
-                          } finally {
-                            setLoadingId(null);
-                          }
-                        }}
-                        disabled={loadingId !== null}
-                        className={`p-2.5 flex items-center justify-center rounded-xl transition-all shadow-sm active:scale-95 border ${
-                          loadingId === member.id 
-                            ? 'bg-rose-500/10 border-rose-500/20 text-rose-500/50 cursor-wait' 
-                            : 'bg-rose-500/10 border-rose-500/20 text-rose-500 hover:bg-rose-500 hover:text-white cursor-pointer'
-                        }`}
-                        title="Delete Member"
-                      >
-                        {loadingId === member.id ? (
-                          <div className="w-4 h-4 border-2 border-rose-500 border-t-transparent animate-spin rounded-full" />
-                        ) : (
-                          <Trash2 size={16} />
-                        )}
-                      </button>
+            <div className="space-y-3">
+              {members.filter(m => m.role === memberTab).map(member => (
+                <div key={member.id} className="bg-[#18181b] p-3.5 rounded-2xl border border-white/5 flex items-center justify-between shadow-sm">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <MemberDesignBadge name={member.name} role={member.role} size="md" />
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-semibold text-sm text-white/90 truncate">{member.name}</h3>
+                      <p className="text-[10px] text-indigo-400 font-mono">PIN: {member.pin || '1234'}</p>
                     </div>
                   </div>
-                ))}
-                {members.filter(m => m.role === memberTab).length === 0 && (
-                  <div className="text-center py-16 bg-[#18181b] rounded-2xl border border-dashed border-white/10 text-white/30">
-                     <Users size={32} className="mx-auto mb-3 opacity-30" />
-                     <p className="text-sm font-medium">No {memberTab}s yet</p>
+                  <div className="flex gap-1.5 shrink-0 ml-2">
+                    <button 
+                      type="button"
+                      onClick={() => setEditingMember(member)}
+                      className="p-2 flex items-center justify-center rounded-xl bg-white/5 text-white/60 hover:bg-white/10 hover:text-white transition-all"
+                      title="Edit Member & PIN"
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!window.confirm("Delete this member?")) return;
+                        try {
+                          await deleteDoc(doc(db, 'teamMembers', member.id));
+                        } catch (err) {
+                          console.error(err);
+                        }
+                      }}
+                      className="p-2 flex items-center justify-center rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-all"
+                      title="Delete Member"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
-                )}
-              </div>
+                </div>
+              ))}
+              {members.filter(m => m.role === memberTab).length === 0 && (
+                <div className="text-center py-12 bg-[#18181b] rounded-2xl border border-dashed border-white/10 text-white/30">
+                  <Users size={32} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-xs font-medium">No {memberTab}s added yet</p>
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {activeTab === 'history' && <AdminHistoryView />}
-        {activeTab === 'settings' && <AdminSettingsView />}
+        {activeTab === 'settings' && <AdminSettingsView requests={notifications} initialLogoUrl={appLogoUrl} />}
       </div>
 
       <AnimatePresence>
@@ -708,19 +1923,231 @@ function AdminDashboard({
   );
 }
 
-// --- Sub-Components (Modals & Views) ---
+// --- Admin Requests Management with Date Filter & Stage Workflow ---
 
-function AdminSettingsView() {
+function AdminRequestsView({ requestType }: { requestType: 'seat_booking' | 'withdraw' }) {
+  const [requests, setRequests] = useState<RequestData[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'accepted' | 'confirmed' | 'rejected'>('pending');
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const q = query(collection(db, 'requests'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(
+      q, 
+      (snapshot) => {
+        const all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RequestData));
+        setRequests(all.filter(r => (r.type || 'withdraw') === requestType));
+      },
+      (error) => handleFirestoreError(error, OperationType.LIST, 'requests')
+    );
+    return () => unsubscribe();
+  }, [requestType]);
+
+  const handleUpdateStatus = async (id: string, newStatus: 'accepted' | 'confirmed' | 'rejected') => {
+    if (loadingId) return;
+    setLoadingId(id);
+    try {
+      await updateDoc(doc(db, 'requests', id), {
+        status: newStatus,
+        updatedAt: serverTimestamp()
+      });
+    } catch (err: any) {
+      console.error(err);
+      alert('Error updating status: ' + err.message);
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  const handleDeleteRequest = async (id: string) => {
+    if (!window.confirm(TRANSLATIONS.CONFIRM_DELETE)) return;
+    try {
+      await deleteDoc(doc(db, 'requests', id));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleClearCategoryRequests = async () => {
+    const sectionName = requestType === 'seat_booking' ? 'Seat Booking (সিট বুকিং)' : 'Withdraw (উইথড্র)';
+    if (!window.confirm(`আপনি কি নিশ্চিত যে ${sectionName}-এর সকল রিকোয়েস্ট স্থায়ীভাবে মুছে ফেলতে চান? (Clear all ${sectionName} requests?)`)) return;
+    
+    try {
+      for (const req of requests) {
+        await deleteDoc(doc(db, 'requests', req.id));
+      }
+      alert(`${sectionName}-এর সমস্ত রিকোয়েস্ট সফলভাবে ক্লিয়ার করা হয়েছে!`);
+    } catch (err) {
+      console.error('Error clearing requests:', err);
+      alert('ক্লিয়ার করতে সমস্যা হয়েছে।');
+    }
+  };
+
+  // Filter by Date if selected
+  const dateFiltered = selectedDate 
+    ? requests.filter(req => {
+        if (!req.createdAt?.toDate) return false;
+        const reqDate = req.createdAt.toDate().toISOString().split('T')[0];
+        return reqDate === selectedDate;
+      })
+    : requests;
+
+  // Filter by Status
+  const finalFiltered = dateFiltered.filter(r => r.status === statusFilter);
+
+  return (
+    <div className="space-y-4">
+      {/* Date Picker Bar */}
+      <div className="bg-[#18181b] p-3 rounded-2xl border border-white/5 space-y-2">
+        <div className="flex items-center justify-between text-xs font-bold text-white/70">
+          <span className="flex items-center gap-1.5 text-indigo-400">
+            <Calendar size={16} /> Filter by Date (তারিখ অনুযায়ী ফিল্টার)
+          </span>
+          {selectedDate && (
+            <button 
+              onClick={() => setSelectedDate('')}
+              className="text-[10px] text-white/40 hover:text-white underline shrink-0"
+            >
+              All Dates
+            </button>
+          )}
+        </div>
+        <input 
+          type="date"
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+          className="w-full bg-[#09090b] border border-white/10 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-indigo-500/50"
+        />
+      </div>
+
+      {/* Status Filter Badges (All option removed as requested) */}
+      <div className="flex bg-[#18181b] p-1 rounded-2xl border border-white/5 text-[11px] font-bold">
+        {(['pending', 'accepted', 'confirmed', 'rejected'] as const).map(st => (
+          <button 
+            key={st}
+            onClick={() => setStatusFilter(st)}
+            className={`flex-1 py-2 rounded-xl capitalize transition-all ${
+              statusFilter === st 
+                ? 'bg-gradient-to-r from-cyan-500/20 to-indigo-500/20 text-white border border-cyan-500/30 shadow-sm font-black' 
+                : 'text-white/40 hover:text-white'
+            }`}
+          >
+            {st === 'pending' ? 'Pending' : st === 'accepted' ? 'Accepted' : st === 'confirmed' ? 'Confirmed' : 'Rejected'} ({dateFiltered.filter(r => r.status === st).length})
+          </button>
+        ))}
+      </div>
+
+      {/* Requests List */}
+      <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1 custom-scrollbar">
+        {finalFiltered.map(req => (
+          <div key={req.id} className="bg-[#18181b] p-4 rounded-2xl border border-white/5 space-y-3 shadow-sm">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="text-[9px] uppercase font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20">
+                    {req.type === 'seat_booking' ? 'Seat Booking' : 'Withdraw'}
+                  </span>
+                  {req.paymentMethod && (
+                    <span className="text-[9px] font-bold text-indigo-300 bg-indigo-500/10 px-2 py-0.5 rounded-full">
+                      {req.paymentMethod}
+                    </span>
+                  )}
+                </div>
+                <h4 className="font-bold text-white text-sm">{req.recipientName}</h4>
+                <p className="text-xs text-white/50">From: <strong>{req.senderName}</strong> ({req.senderNumber})</p>
+                <p className="text-[10px] text-white/40">
+                  {req.createdAt?.toDate ? req.createdAt.toDate().toLocaleString() : 'Just now'}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="font-mono font-bold text-base text-white">৳{req.amount}</p>
+                <div className="mt-1">
+                  <Badge status={req.status} />
+                </div>
+              </div>
+            </div>
+
+            {/* Trx Digit & WhatsApp info */}
+            {req.trxDigit && (
+              <div className="bg-[#09090b] p-2.5 rounded-xl text-xs text-white/70 font-mono border border-white/5 flex flex-wrap gap-3 justify-between">
+                <span>Trx Digit: <strong className="text-cyan-300">{req.trxDigit}</strong></span>
+                {req.whatsappNumber && <span>WhatsApp: <strong>{req.whatsappNumber}</strong></span>}
+              </div>
+            )}
+
+            {/* Workflow Action Buttons */}
+            <div className="flex gap-2 pt-1 border-t border-white/5">
+              {req.status === 'pending' && (
+                <button
+                  onClick={() => handleUpdateStatus(req.id, 'accepted')}
+                  disabled={loadingId === req.id}
+                  className="flex-1 py-2 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
+                >
+                  <Check size={14} /> Accept Request
+                </button>
+              )}
+              {req.status === 'accepted' && (
+                <button
+                  onClick={() => handleUpdateStatus(req.id, 'confirmed')}
+                  disabled={loadingId === req.id}
+                  className="flex-1 py-2 bg-rose-600/20 text-rose-400 border border-rose-500/30 hover:bg-rose-600 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
+                >
+                  <CheckCircle2 size={14} /> Confirm Request
+                </button>
+              )}
+              {req.status !== 'rejected' && (
+                <button
+                  onClick={() => handleUpdateStatus(req.id, 'rejected')}
+                  disabled={loadingId === req.id}
+                  className="py-2 px-3 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
+                  title="Reject Request"
+                >
+                  Reject
+                </button>
+              )}
+              <button
+                onClick={() => handleDeleteRequest(req.id)}
+                className="p-2 text-rose-400 hover:bg-rose-500/20 rounded-xl transition-colors"
+                title="Delete Request"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {finalFiltered.length === 0 && (
+          <div className="text-center py-16 text-white/20 text-xs">
+            No {requestType === 'seat_booking' ? 'Seat Booking' : 'Withdraw'} requests found
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// --- Admin Settings & History Clear View ---
+
+function AdminSettingsView({ requests, initialLogoUrl }: { requests?: RequestData[], initialLogoUrl?: string }) {
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [clearing, setClearing] = useState(false);
+
+  const [currentLogoUrl, setCurrentLogoUrl] = useState<string>(initialLogoUrl || '');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoSuccess, setLogoSuccess] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const fetchConfig = async () => {
       try {
         const snap = await getDoc(doc(db, 'settings', 'config'));
-        if (snap.exists() && snap.data().userPin) {
-          setPin(snap.data().userPin);
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.userPin) setPin(data.userPin);
+          if (data.logoUrl !== undefined) setCurrentLogoUrl(data.logoUrl);
         }
       } catch (err) {
         console.error(err);
@@ -728,6 +2155,46 @@ function AdminSettingsView() {
     };
     fetchConfig();
   }, []);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('দয়া করে একটি সঠিক ইমেজ ফাইল নির্বাচন করুন। (Please select an image file)');
+      return;
+    }
+
+    setUploadingLogo(true);
+    try {
+      const base64Image = await compressAndConvertToBase64(file, 400, 400);
+      await setDoc(doc(db, 'settings', 'config'), { logoUrl: base64Image }, { merge: true });
+      setCurrentLogoUrl(base64Image);
+      setLogoSuccess(true);
+      setTimeout(() => setLogoSuccess(false), 3000);
+    } catch (err) {
+      console.error('Error uploading logo:', err);
+      alert('লোগো আপডেট করতে সমস্যা হয়েছে।');
+    } finally {
+      setUploadingLogo(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (!window.confirm("ডিফল্ট লোগোতে ফিরে যেতে চান? (Reset to default logo?)")) return;
+    setUploadingLogo(true);
+    try {
+      await setDoc(doc(db, 'settings', 'config'), { logoUrl: '' }, { merge: true });
+      setCurrentLogoUrl('');
+      setLogoSuccess(true);
+      setTimeout(() => setLogoSuccess(false), 3000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -745,12 +2212,101 @@ function AdminSettingsView() {
     }
   };
 
+  const handleClearAllHistory = async () => {
+    if (!window.confirm("Are you sure you want to clear ALL requests history for all users? This cannot be undone.")) return;
+    setClearing(true);
+    try {
+      if (requests && requests.length > 0) {
+        for (const req of requests) {
+          await deleteDoc(doc(db, 'requests', req.id));
+        }
+      }
+      alert("All request history cleared successfully!");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to clear history");
+    } finally {
+      setClearing(false);
+    }
+  };
+
   return (
-    <div className="space-y-6 mt-4">
-      <div className="bg-[#18181b] p-6 rounded-3xl border border-white/5 shadow-sm space-y-5">
+    <div className="space-y-6 mt-2">
+      {/* App Logo Customization Section */}
+      <div className="bg-[#18181b] p-6 rounded-3xl border border-white/5 shadow-sm space-y-4">
         <div>
-          <h3 className="font-bold text-[17px] mb-1">User Login PIN</h3>
-          <p className="text-sm text-white/50 leading-snug">Set the PIN that users will use to access the dashboard.</p>
+          <h3 className="font-extrabold text-[17px] text-white flex items-center gap-2">
+            <Sparkles size={18} className="text-cyan-400" />
+            অ্যাপ লোগো সেটিংস (App Logo Update)
+          </h3>
+          <p className="text-xs text-white/50 leading-snug mt-1">
+            গ্যালারি থেকে লোগো আপলোড করুন। যে লোগো আপলোড করবেন তা লগইন পেজ সহ পুরো অ্যাপের উপরে সবাই দেখতে পাবে।
+          </p>
+        </div>
+
+        <div className="flex items-center gap-4 bg-[#09090b] p-4 rounded-2xl border border-white/10">
+          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-600 to-cyan-500 flex items-center justify-center shrink-0 border border-white/10 overflow-hidden relative shadow-lg">
+            {currentLogoUrl ? (
+              <img src={currentLogoUrl} alt="App Logo" className="w-full h-full object-cover" />
+            ) : (
+              <TrendingUp size={36} className="text-white" />
+            )}
+          </div>
+
+          <div className="flex-1 space-y-2">
+            <p className="text-xs font-extrabold text-white">
+              {currentLogoUrl ? 'কাস্টম লোগো সক্রিয় (Custom Logo Active)' : 'ডিফল্ট লোগো সক্রিয় (Default Logo)'}
+            </p>
+
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleLogoUpload} 
+              accept="image/*" 
+              className="hidden" 
+            />
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingLogo}
+                className="px-3.5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-md active:scale-95 disabled:opacity-50"
+              >
+                {uploadingLogo ? (
+                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Upload size={15} />
+                )}
+                গ্যালারি থেকে আপলোড
+              </button>
+
+              {currentLogoUrl && (
+                <button
+                  type="button"
+                  onClick={handleRemoveLogo}
+                  disabled={uploadingLogo}
+                  className="px-3 py-2 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-bold transition-all flex items-center gap-1 active:scale-95"
+                >
+                  <RotateCcw size={14} /> রিসেট
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {logoSuccess && (
+          <div className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-bold p-2.5 rounded-xl flex items-center gap-2">
+            <CheckCircle2 size={16} /> লোগো সফলভাবে আপডেট করা হয়েছে! (Logo updated live!)
+          </div>
+        )}
+      </div>
+
+      {/* Global User Login PIN */}
+      <div className="bg-[#18181b] p-6 rounded-3xl border border-white/5 shadow-sm space-y-4">
+        <div>
+          <h3 className="font-bold text-[17px] mb-1">Global User Login PIN</h3>
+          <p className="text-xs text-white/50 leading-snug">Set the PIN that users will enter on the landing page to access the app.</p>
         </div>
         <form onSubmit={handleSave} className="space-y-4">
           <input 
@@ -763,197 +2319,37 @@ function AdminSettingsView() {
           <button 
             type="submit"
             disabled={loading || !pin.trim()}
-            className="w-full py-4 bg-white text-black hover:bg-white/90 disabled:opacity-50 transition-colors rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm text-sm"
+            className="w-full py-3.5 bg-white text-black hover:bg-white/90 disabled:opacity-50 transition-colors rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm text-sm"
           >
             {loading ? 'Saving...' : success ? <><CheckCircle2 size={18} /> Saved</> : 'Save PIN'}
           </button>
         </form>
       </div>
-    </div>
-  );
-}
 
-function RequestModal({ member, sender, onClose }: { member: TeamMember, sender: UserProfile | null, onClose: () => void }) {
-  const [senderName, setSenderName] = useState(sender?.name || '');
-  const [senderNumber, setSenderNumber] = useState('');
-  const [amount, setAmount] = useState('');
-  const [note, setNote] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!senderName || !senderNumber) return;
-    setLoading(true);
-    try {
-      await addDoc(collection(db, 'requests'), {
-        senderId: sender?.uid || 'guest',
-        senderName: senderName,
-        senderNumber: senderNumber,
-        senderRole: sender?.role || 'user',
-        recipientName: member.name,
-        recipientNumber: member.number || '',
-        amount: amount ? Number(amount) : 0,
-        note: note,
-        status: 'pending',
-        createdAt: serverTimestamp()
-      });
-      setSubmitted(true);
-      setTimeout(onClose, 2000);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'requests');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (submitted) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
-        <GlassCard className="p-12 text-center space-y-4">
-          <CheckCircle2 size={64} className="text-emerald-500 mx-auto" />
-          <h2 className="text-2xl font-bold">{TRANSLATIONS.SUCCESS_SUBMIT}</h2>
-        </GlassCard>
+      {/* Clear All History Option */}
+      <div className="bg-[#18181b] p-6 rounded-3xl border border-rose-500/20 shadow-sm space-y-4">
+        <div>
+          <h3 className="font-bold text-[17px] text-rose-400 mb-1">Clear All Requests History (হিস্টরি ক্লিয়ার করুন)</h3>
+          <p className="text-xs text-white/50 leading-snug">Delete all seat booking and withdrawal records from the database.</p>
+        </div>
+        <button
+          onClick={handleClearAllHistory}
+          disabled={clearing}
+          className="w-full py-3.5 bg-rose-600/20 text-rose-400 hover:bg-rose-600 hover:text-white border border-rose-500/30 disabled:opacity-50 transition-colors rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2"
+        >
+          <Trash2 size={18} />
+          {clearing ? 'Clearing History...' : 'CLEAR ALL HISTORY (সবার হিস্টরি ক্লিয়ার করুন)'}
+        </button>
       </div>
-    );
-  }
-
-  const isLeader = member.role === 'leader';
-  const themeColorText = isLeader ? 'text-indigo-400' : 'text-emerald-400';
-  const themeColorRing = isLeader ? 'focus:border-indigo-500/50 focus:ring-indigo-500/20' : 'focus:border-emerald-500/50 focus:ring-emerald-500/20';
-  const themeGradient = isLeader ? 'from-indigo-500 to-purple-600 shadow-indigo-500/30' : 'from-emerald-500 to-teal-600 shadow-emerald-500/30';
-  const themeGradientBg = isLeader ? 'from-[#18181b] to-[#09090b]' : 'from-[#18181b] to-[#09090b]';
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 overflow-y-auto">
-      <motion.div 
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm" 
-      />
-      <motion.div 
-        initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
-        className={`relative w-full max-w-sm bg-gradient-to-b ${themeGradientBg} rounded-t-[2rem] sm:rounded-[2rem] p-6 sm:p-8 border border-white/10 shadow-2xl my-auto`}
-      >
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg bg-gradient-to-br text-white ${themeGradient}`}>
-              <UserIcon size={24} />
-            </div>
-            <div>
-              <p className={`text-[10px] uppercase font-bold tracking-widest mb-0.5 ${themeColorText}`}>
-                {isLeader ? 'Team Leader' : 'Team Trainer'}
-              </p>
-              <h2 className="text-xl font-bold tracking-tight text-white">{member.name}</h2>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-[#18181b] rounded-xl transition-colors self-start"><XCircle size={22} className="text-white/40" /></button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <label className={`text-[11px] font-bold uppercase tracking-wider pl-1 ${themeColorText}`}>{TRANSLATIONS.NAME} *</label>
-            <input 
-              type="text" 
-              required
-              value={senderName}
-              onChange={(e) => setSenderName(e.target.value)}
-              placeholder="Your Name"
-              className={`w-full bg-[#09090b] border border-white/10 rounded-2xl py-3.5 px-5 text-sm focus:outline-none focus:ring-4 transition-all shadow-inner ${themeColorRing}`}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className={`text-[11px] font-bold uppercase tracking-wider pl-1 ${themeColorText}`}>{TRANSLATIONS.NUMBER} *</label>
-            <input 
-              type="tel" 
-              required
-              value={senderNumber}
-              onChange={(e) => setSenderNumber(e.target.value)}
-              placeholder="Your Number"
-              className={`w-full bg-[#09090b] border border-white/10 rounded-2xl py-3.5 px-5 text-sm focus:outline-none focus:ring-4 transition-all shadow-inner ${themeColorRing}`}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className={`text-[11px] font-bold uppercase tracking-wider pl-1 ${themeColorText}`}>{TRANSLATIONS.AMOUNT} (Optional)</label>
-            <input 
-              type="number" 
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
-              className={`w-full bg-[#09090b] border border-white/10 rounded-2xl py-3.5 px-5 text-sm focus:outline-none focus:ring-4 transition-all shadow-inner ${themeColorRing}`}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className={`text-[11px] font-bold uppercase tracking-wider pl-1 ${themeColorText}`}>{TRANSLATIONS.NOTE} (Optional)</label>
-            <textarea 
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Any details..."
-              rows={2}
-              className={`w-full bg-[#09090b] border border-white/10 rounded-2xl py-3.5 px-5 text-sm focus:outline-none focus:ring-4 transition-all resize-none shadow-inner ${themeColorRing}`}
-            />
-          </div>
-          <button 
-            type="submit"
-            disabled={loading}
-            className={`w-full py-4 text-white disabled:opacity-50 transition-all rounded-2xl font-bold text-[15px] shadow-lg mt-6 bg-gradient-to-r hover:opacity-90 ${themeGradient}`}
-          >
-            {loading ? 'Sending...' : TRANSLATIONS.SUBMIT}
-          </button>
-        </form>
-      </motion.div>
     </div>
   );
 }
 
-function HistoryModal({ history, onClose }: { history: RequestData[], onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <motion.div 
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm" 
-      />
-      <motion.div 
-        initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-        className="relative w-full max-w-sm h-[80vh] bg-[#151619] rounded-3xl p-6 border border-white/10 shadow-2xl flex flex-col"
-      >
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <HistoryIcon className="text-indigo-400" />
-            {TRANSLATIONS.HISTORY}
-          </h2>
-          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-xl"><XCircle size={24} className="text-white/40" /></button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-          {history.map(req => (
-            <div key={req.id} className="bg-white/5 p-4 rounded-2xl border border-white/5 space-y-3">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="font-bold text-indigo-400">{req.recipientName}</h3>
-                  <p className="text-[10px] text-white/40 uppercase tracking-tighter">
-                    {req.createdAt?.toDate ? req.createdAt.toDate().toLocaleDateString() : 'Just now'}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="font-mono font-bold">৳{req.amount}</p>
-                  <Badge status={req.status} />
-                </div>
-              </div>
-              {req.note && <p className="text-xs text-white/60 bg-white/5 p-2 rounded-lg italic">"{req.note}"</p>}
-            </div>
-          ))}
-          {history.length === 0 && <div className="text-center py-20 text-white/20">No data found</div>}
-        </div>
-      </motion.div>
-    </div>
-  );
-}
+// --- Add & Edit Member Modals with Gender & Avatar Selection ---
 
 function AddMemberModal({ role, onClose }: { role: 'leader' | 'trainer', onClose: () => void }) {
   const [name, setName] = useState('');
+  const [pin, setPin] = useState('1234');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -964,6 +2360,7 @@ function AddMemberModal({ role, onClose }: { role: 'leader' | 'trainer', onClose
       await addDoc(collection(db, 'teamMembers'), {
         name: name.trim(),
         role,
+        pin: pin.trim() || '1234',
         createdAt: serverTimestamp()
       });
       onClose();
@@ -975,17 +2372,20 @@ function AddMemberModal({ role, onClose }: { role: 'leader' | 'trainer', onClose
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <motion.div 
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         onClick={onClose}
-        className="absolute inset-0 bg-black/60 backdrop-blur-md" 
+        className="absolute inset-0 bg-black/70 backdrop-blur-md" 
       />
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-        className="relative w-full max-w-sm bg-[#09090b] rounded-3xl p-8 border border-white/10 shadow-2xl"
+        className="relative w-full max-w-sm bg-[#09090b] rounded-3xl p-6 border border-white/10 shadow-2xl z-10 overflow-y-auto custom-scrollbar"
       >
-        <h2 className="text-xl font-bold mb-6 italic">{TRANSLATIONS.ADD_MEMBER} ({TRANSLATIONS[role === 'leader' ? 'TEAM_LEADER' : 'TEAM_TRAINER']})</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold">{TRANSLATIONS.ADD_MEMBER} ({TRANSLATIONS[role === 'leader' ? 'TEAM_LEADER' : 'TEAM_TRAINER']})</h2>
+          <button onClick={onClose} className="p-1 hover:bg-white/5 rounded-xl"><XCircle size={20} className="text-white/40" /></button>
+        </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
             <label className="text-[10px] font-bold uppercase tracking-widest text-white/40 pl-1">{TRANSLATIONS.NAME}</label>
@@ -995,15 +2395,26 @@ function AddMemberModal({ role, onClose }: { role: 'leader' | 'trainer', onClose
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full bg-[#18181b] border border-white/10 rounded-2xl py-4 px-6 focus:outline-none focus:border-indigo-500/50 transition-colors shadow-inner"
+              className="w-full bg-[#18181b] border border-white/10 rounded-2xl py-3.5 px-4 text-xs font-semibold focus:outline-none focus:border-indigo-500/50 text-white"
             />
           </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-white/40 pl-1">Account PIN (Default: 1234)</label>
+            <input 
+              placeholder="e.g. 1234"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              className="w-full bg-[#18181b] border border-white/10 rounded-2xl py-3.5 px-4 text-xs font-mono font-semibold focus:outline-none focus:border-indigo-500/50 text-white"
+            />
+          </div>
+
           <button 
             type="submit"
             disabled={loading || !name.trim()}
-            className="w-full py-4 bg-white text-black hover:bg-white/90 disabled:opacity-50 transition-colors rounded-2xl font-bold shadow-lg mt-4"
+            className="w-full py-3.5 bg-white text-black hover:bg-white/90 disabled:opacity-50 transition-colors rounded-2xl font-bold shadow-lg mt-2 text-xs"
           >
-            {loading ? '...' : TRANSLATIONS.SUBMIT}
+            {loading ? 'Saving...' : TRANSLATIONS.SUBMIT}
           </button>
         </form>
       </motion.div>
@@ -1013,48 +2424,19 @@ function AddMemberModal({ role, onClose }: { role: 'leader' | 'trainer', onClose
 
 function EditMemberModal({ member, onClose }: { member: TeamMember, onClose: () => void }) {
   const [name, setName] = useState(member.name);
+  const [pin, setPin] = useState(member.pin || '1234');
   const [loading, setLoading] = useState(false);
-
-  const handleDelete = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    
-    console.log('Modal: Delete initiated for', member.name, 'ID:', member.id);
-    
-    if (loading) {
-      console.log('Modal: Already loading, skipping');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      console.log('Modal: Deleting doc...');
-      const docRef = doc(db, 'teamMembers', member.id);
-      await deleteDoc(docRef);
-      console.log('Modal: Delete success');
-      alert('সফলভাবে ডিলিট করা হয়েছে');
-      onClose();
-    } catch (error: any) { 
-      console.error('Modal: Delete error:', error);
-      alert('ডিলিট করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।');
-      handleFirestoreError(error, OperationType.DELETE, `teamMembers/${member.id}`);
-    } finally { 
-      setLoading(false); 
-      console.log('Modal: Loading state reset');
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     setLoading(true);
     try {
-      const docRef = doc(db, 'teamMembers', member.id);
-      await updateDoc(docRef, {
+      await updateDoc(doc(db, 'teamMembers', member.id), {
         name: name.trim(),
+        pin: pin.trim() || '1234',
         updatedAt: serverTimestamp()
       });
-      alert('সফলভাবে আপডেট করা হয়েছে');
       onClose();
     } catch (error) { 
       handleFirestoreError(error, OperationType.UPDATE, `teamMembers/${member.id}`);
@@ -1064,62 +2446,48 @@ function EditMemberModal({ member, onClose }: { member: TeamMember, onClose: () 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <motion.div 
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         onClick={onClose}
-        className="absolute inset-0 bg-black/60 backdrop-blur-md" 
+        className="absolute inset-0 bg-black/70 backdrop-blur-md" 
       />
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-        className="relative w-full max-w-sm bg-[#09090b] rounded-3xl p-8 border border-white/10 shadow-2xl"
+        className="relative w-full max-w-sm bg-[#09090b] rounded-3xl p-6 border border-white/10 shadow-2xl z-10 overflow-y-auto custom-scrollbar"
       >
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold italic">মেম্বার এডিট করুন</h2>
-          <div className="flex items-center gap-2">
-            <button 
-              type="button"
-              onClick={handleDelete}
-              disabled={loading}
-              className="px-4 py-2 bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500 hover:text-white rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-2 font-bold text-xs disabled:opacity-50"
-              title="Delete Member"
-            >
-              {loading ? (
-                <div className="w-4 h-4 border-2 border-current border-t-transparent animate-spin rounded-full" />
-              ) : (
-                <>
-                  <Trash2 size={16} />
-                  <span>ডিলিট</span>
-                </>
-              )}
-            </button>
-            <button 
-              type="button"
-              onClick={onClose} 
-              className="p-2 hover:bg-white/5 rounded-xl border border-white/10"
-            >
-              <XCircle size={20} className="text-white/40" />
-            </button>
-          </div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold">Edit Member Profile</h2>
+          <button onClick={onClose} className="p-1 hover:bg-white/5 rounded-xl"><XCircle size={20} className="text-white/40" /></button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-white/40 pl-1">{TRANSLATIONS.NAME}</label>
+            <label className="text-[10px] font-bold uppercase text-white/40 pl-1">{TRANSLATIONS.NAME}</label>
             <input 
               placeholder="Full Name"
               required
-              autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full bg-[#18181b] border border-white/10 rounded-2xl py-4 px-6 focus:outline-none focus:border-indigo-500/50 transition-colors shadow-inner"
+              className="w-full bg-[#18181b] border border-white/10 rounded-2xl py-3.5 px-4 text-xs font-semibold focus:outline-none focus:border-indigo-500/50 text-white"
             />
           </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase text-white/40 pl-1">Account Access PIN</label>
+            <input 
+              placeholder="Account PIN"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              className="w-full bg-[#18181b] border border-white/10 rounded-2xl py-3.5 px-4 text-xs font-mono font-semibold focus:outline-none focus:border-indigo-500/50 text-white"
+            />
+          </div>
+
           <button 
             type="submit"
             disabled={loading || !name.trim()}
-            className="w-full py-4 bg-white text-black hover:bg-white/90 disabled:opacity-50 transition-colors rounded-2xl font-bold shadow-lg mt-4"
+            className="w-full py-3.5 bg-white text-black hover:bg-white/90 disabled:opacity-50 transition-colors rounded-2xl font-bold shadow-lg mt-2 text-xs"
           >
-            {loading ? 'আপডেট হচ্ছে...' : 'আপডেট করুন'}
+            {loading ? 'Updating...' : 'Update Member'}
           </button>
         </form>
       </motion.div>
@@ -1127,197 +2495,65 @@ function EditMemberModal({ member, onClose }: { member: TeamMember, onClose: () 
   );
 }
 
-function NotificationCenter({ notifications, onClose }: { notifications: RequestData[], onClose: () => void }) {
-  const [loadingId, setLoadingId] = useState<string | null>(null);
+// --- Admin Notification Center ---
 
-  const handleAction = async (id: string, status: 'approved' | 'rejected') => {
-    if (loadingId) {
-      console.warn('handleAction: Already loading:', loadingId);
-      return;
-    }
-    
-    console.log(`handleAction: Initiating ${status} for ${id}`);
-    setLoadingId(id);
-    
+function NotificationCenter({ notifications, onClose }: { notifications: RequestData[], onClose: () => void }) {
+  const pendingRequests = notifications.filter(n => n.status === 'pending');
+
+  const handleQuickApprove = async (id: string) => {
     try {
-      const requestRef = doc(db, 'requests', id);
-      console.log('handleAction: Sending update to Firestore...');
-      
-      await updateDoc(requestRef, {
-        status: status,
+      await updateDoc(doc(db, 'requests', id), {
+        status: 'accepted',
         updatedAt: serverTimestamp()
       });
-      
-      console.log('handleAction: Update confirmed by Firestore');
-      alert(status === 'approved' ? 'সফলভাবে অ্যাপ্রুভ হয়েছে' : 'রিজেক্ট করা হয়েছে');
-    } catch (error: any) {
-      console.error('handleAction: ERROR:', error);
-      alert('সফল হয়নি: ' + (error.message || 'Error updating status'));
-      handleFirestoreError(error, OperationType.UPDATE, `requests/${id}`);
-    } finally {
-      setLoadingId(null);
-      console.log('handleAction: Finished cleanup');
+    } catch (err) {
+      console.error(err);
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <motion.div 
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm" 
-      />
-      <motion.div 
-        initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
-        className="absolute top-0 right-0 bottom-0 w-full max-w-sm bg-[#09090b] shadow-2xl border-l border-white/10 flex flex-col"
-      >
-        <div className="p-6 border-b border-white/5 flex items-center justify-between">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Bell className="text-indigo-400" />
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} className="absolute top-0 right-0 bottom-0 w-full max-w-sm bg-[#09090b] shadow-2xl border-l border-white/10 flex flex-col z-10">
+        <div className="p-5 border-b border-white/5 flex items-center justify-between">
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <Bell className="text-indigo-400" size={20} />
             {TRANSLATIONS.NOTIFICATIONS}
           </h2>
-          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-xl"><XCircle size={24} className="text-white/40" /></button>
+          <button onClick={onClose} className="p-1 hover:bg-white/5 rounded-xl"><XCircle size={22} className="text-white/40" /></button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-          {notifications.filter(n => n.status === 'pending').map(req => (
-            <div key={req.id} className="rounded-2xl border transition-all overflow-hidden bg-[#18181b] border-white/5 shadow-sm">
-               <div className="p-5 space-y-4">
-                 <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <p className="text-[10px] uppercase font-bold text-indigo-400 tracking-widest bg-indigo-500/10 px-2 py-0.5 rounded-full inline-block mb-1 border border-indigo-500/20">New Request</p>
-                      <h3 className="font-bold text-lg leading-tight">{req.recipientName}</h3>
-                      <p className="text-xs text-white/50">From: {req.senderName} ({req.senderNumber})</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-mono font-bold text-xl text-white">৳{req.amount || '0'}</p>
-                    </div>
-                 </div>
-                 {req.note && <p className="text-sm text-white/50 italic bg-white/5 p-4 rounded-xl border border-white/5">"{req.note}"</p>}
-               </div>
-               
-                <div className="flex border-t border-white/5 overflow-hidden">
-                  <button 
-                   type="button"
-                   onClick={() => handleAction(req.id, 'approved')}
-                   disabled={loadingId !== null}
-                   className={`flex-1 py-4 font-bold transition-all border-r border-white/5 flex items-center justify-center gap-2 hover:bg-emerald-500/20 hover:text-emerald-400 active:scale-95 disabled:opacity-50 cursor-pointer ${
-                     loadingId === req.id ? 'bg-emerald-500/10 text-emerald-500/50' : 'bg-[#18181b] text-white/70 hover:text-white'
-                   }`}
-                  >
-                    {loadingId === req.id ? (
-                      <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent animate-spin rounded-full" />
-                    ) : (TRANSLATIONS.APPROVED || 'Approve')}
-                  </button>
-                  <button 
-                   type="button"
-                   onClick={() => handleAction(req.id, 'rejected')}
-                   disabled={loadingId !== null}
-                   className={`flex-1 py-4 font-bold transition-all flex items-center justify-center gap-2 hover:bg-rose-500/20 hover:text-rose-400 active:scale-95 disabled:opacity-50 cursor-pointer ${
-                     loadingId === req.id ? 'bg-rose-500/10 text-rose-500/50' : 'bg-[#18181b] text-white/70 hover:text-white'
-                   }`}
-                  >
-                    {loadingId === req.id ? (
-                      <div className="w-5 h-5 border-2 border-rose-400 border-t-transparent animate-spin rounded-full" />
-                    ) : (TRANSLATIONS.REJECTED || 'Reject')}
-                  </button>
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+          {pendingRequests.map(req => (
+            <div key={req.id} className="rounded-2xl border bg-[#18181b] border-white/5 p-4 space-y-3">
+              <div className="flex justify-between items-start">
+                <div>
+                  <span className="text-[9px] font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20 uppercase">
+                    {req.type === 'seat_booking' ? 'Seat Booking' : 'Withdraw'}
+                  </span>
+                  <h3 className="font-bold text-white text-sm mt-1">{req.recipientName}</h3>
+                  <p className="text-xs text-white/50">From: {req.senderName} ({req.senderNumber})</p>
                 </div>
+                <p className="font-mono font-bold text-base text-white">৳{req.amount || '0'}</p>
+              </div>
+
+              <button 
+                onClick={() => handleQuickApprove(req.id)}
+                className="w-full py-2 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
+              >
+                <Check size={14} /> Accept Request
+              </button>
             </div>
           ))}
-          
-          {notifications.filter(n => n.status === 'pending').length === 0 && (
-            <div className="text-center py-40 text-white/20">
-              <CheckCircle2 size={48} className="mx-auto mb-4 opacity-20" />
-              <p className="font-medium text-sm">Everything clear!</p>
+
+          {pendingRequests.length === 0 && (
+            <div className="text-center py-32 text-white/20 text-xs">
+              <CheckCircle2 size={40} className="mx-auto mb-2 opacity-20" />
+              <p>No pending notifications</p>
             </div>
           )}
         </div>
       </motion.div>
-    </div>
-  );
-}
-
-function AdminHistoryView() {
-  const [history, setHistory] = useState<RequestData[]>([]);
-  const [filter, setFilter] = useState<'all' | 'approved' | 'rejected'>('all');
-  const [isClearing, setIsClearing] = useState(false);
-
-  useEffect(() => {
-    const q = query(collection(db, 'requests'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(
-      q, 
-      (snapshot) => {
-        setHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RequestData)));
-      },
-      (error) => handleFirestoreError(error, OperationType.LIST, 'requests')
-    );
-    return () => unsubscribe();
-  }, []);
-
-  const handleClearHistory = async () => {
-    if (history.length === 0) return;
-
-    setIsClearing(true);
-    try {
-      // For safety and to avoid massive batches, we delete documents from the local history state
-      const deletePromises = history.map(item => deleteDoc(doc(db, 'requests', item.id)));
-      await Promise.all(deletePromises);
-      alert('সফলভাবে সমস্ত ডাটা ক্লিয়ার করা হয়েছে');
-    } catch (error) {
-      console.error('Clear history error:', error);
-      alert('ডাটা ক্লিয়ার করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।');
-    } finally {
-      setIsClearing(false);
-    }
-  };
-
-  const filteredHistory = filter === 'all' ? history : history.filter(h => h.status === filter);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex flex-1 gap-2 p-1 bg-white/5 rounded-2xl">
-          {(['all', 'approved', 'rejected'] as const).map(f => (
-            <button 
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`flex-1 py-2 rounded-xl text-[10px] font-bold capitalize transition-all ${filter === f ? 'bg-white/10 shadow-sm text-white' : 'text-white/40'}`}
-            >
-              {f === 'all' ? TRANSLATIONS.FILTER_ALL : (f === 'approved' ? TRANSLATIONS.APPROVED : TRANSLATIONS.REJECTED)}
-            </button>
-          ))}
-        </div>
-        <button 
-          onClick={handleClearHistory}
-          disabled={isClearing || history.length === 0}
-          className="p-2.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-30 text-white rounded-2xl transition-all shadow-lg active:scale-90 flex items-center justify-center shrink-0"
-          title="Clear All History"
-        >
-          {isClearing ? (
-            <div className="w-5 h-5 border-2 border-white border-t-transparent animate-spin rounded-full" />
-          ) : (
-            <Trash2 size={20} />
-          )}
-        </button>
-      </div>
-
-      <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-        {filteredHistory.map(req => (
-          <div key={req.id} className="bg-white/5 p-4 rounded-2xl border border-white/5 flex items-center justify-between">
-            <div>
-              <h4 className="font-bold">{req.recipientName}</h4>
-              <p className="text-[10px] text-white/40">From: {req.senderName} • {req.createdAt?.toDate?.().toLocaleDateString()}</p>
-            </div>
-            <div className="text-right">
-              <p className="font-mono font-bold">৳{req.amount}</p>
-              <Badge status={req.status} />
-            </div>
-          </div>
-        ))}
-        {filteredHistory.length === 0 && (
-          <div className="text-center py-20 text-white/10">No data found</div>
-        )}
-      </div>
     </div>
   );
 }

@@ -11,11 +11,16 @@ export interface TeamMember {
   name: string;
   number?: string;
   role: 'leader' | 'trainer';
+  pin?: string;
+  avatar?: string;
+  gender?: 'male' | 'female';
   addedAt: any;
 }
 
 export interface RequestData {
   id: string;
+  refId?: string;
+  type: 'withdraw' | 'seat_booking';
   senderId: string;
   senderName: string;
   senderNumber?: string;
@@ -23,8 +28,12 @@ export interface RequestData {
   recipientName: string;
   recipientNumber?: string;
   amount: number;
-  note: string;
-  status: 'pending' | 'approved' | 'rejected';
+  trxDigit?: string;
+  whatsappNumber?: string;
+  paymentMethod?: 'BKASH' | 'NAGAD' | 'ROCKET' | 'CASH';
+  note?: string;
+  status: 'pending' | 'accepted' | 'confirmed' | 'rejected';
   createdAt: any;
   updatedAt?: any;
 }
+
