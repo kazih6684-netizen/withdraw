@@ -20,7 +20,7 @@ export interface TeamMember {
 export interface RequestData {
   id: string;
   refId?: string;
-  type: 'withdraw' | 'seat_booking';
+  type: 'withdraw' | 'seat_booking' | 'sure_shot';
   senderId: string;
   senderName: string;
   senderNumber?: string;
@@ -32,8 +32,12 @@ export interface RequestData {
   whatsappNumber?: string;
   paymentMethod?: 'BKASH' | 'NAGAD' | 'ROCKET' | 'CASH';
   note?: string;
-  status: 'pending' | 'accepted' | 'confirmed' | 'rejected';
+  status: 'pending' | 'accepted' | 'confirmed' | 'rejected' | 'expired';
   createdAt: any;
   updatedAt?: any;
+  expiresAt?: any;
+  bookingSequence?: number;
+  submittedByUid?: string;
+  counselorLeader?: string;
 }
 

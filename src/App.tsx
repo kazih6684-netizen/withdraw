@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import html2canvas from 'html2canvas';
+import { toPng } from 'html-to-image';
 import { 
   auth, 
   db, 
@@ -52,7 +52,9 @@ import {
   Printer,
   FileText,
   RotateCcw,
-  Upload
+  Upload,
+  Zap,
+  AlertTriangle
 } from 'lucide-react';
 
 // --- Image Compression Helper ---
@@ -132,21 +134,24 @@ const Badge = ({ status }: { status: string }) => {
     accepted: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.15)]",
     confirmed: "bg-blue-500/15 text-blue-300 border-blue-500/30 shadow-[0_0_8px_rgba(59,130,246,0.15)]",
     approved: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.15)]",
-    rejected: "bg-rose-500/15 text-rose-300 border-rose-500/30 shadow-[0_0_8px_rgba(244,63,94,0.15)]"
+    rejected: "bg-rose-500/15 text-rose-300 border-rose-500/30 shadow-[0_0_8px_rgba(244,63,94,0.15)]",
+    expired: "bg-zinc-600/20 text-zinc-400 border-zinc-500/30"
   };
   const dots = {
     pending: "bg-amber-400 animate-pulse",
     accepted: "bg-emerald-400",
     confirmed: "bg-blue-400",
     approved: "bg-emerald-400",
-    rejected: "bg-rose-400"
+    rejected: "bg-rose-400",
+    expired: "bg-zinc-400"
   };
   const labels: Record<string, string> = {
     pending: "পেন্ডিং",
     accepted: "একসেপ্টেড",
     confirmed: "কনফার্মড",
     approved: "অনুমোদিত",
-    rejected: "রিজেক্টেড"
+    rejected: "রিজেক্টেড",
+    expired: "মেয়াদ উত্তীর্ণ"
   };
 
   const key = status as keyof typeof styles;
@@ -161,6 +166,216 @@ const Badge = ({ status }: { status: string }) => {
     </span>
   );
 };
+
+// --- Timestamp & 6-Hour Countdown Helper ---
+
+function getTimestampMs(ts: any): number {
+  if (!ts) return Date.now();
+  if (typeof ts === 'number') return ts;
+  if (ts.toDate && typeof ts.toDate === 'function') return ts.toDate().getTime();
+  if (ts.seconds) return ts.seconds * 1000;
+  if (ts instanceof Date) return ts.getTime();
+  const parsed = new Date(ts).getTime();
+  return isNaN(parsed) ? Date.now() : parsed;
+}
+
+function CountdownTimer({ 
+  createdAt, 
+  expiresAt,
+  onExpire, 
+  variant = 'badge',
+  className = '',
+  enable20MinRule = true
+}: { 
+  createdAt: any; 
+  expiresAt?: any;
+  onExpire?: () => void; 
+  variant?: 'badge' | 'box' | 'compact' | 'admin';
+  className?: string;
+  enable20MinRule?: boolean;
+}) {
+  const [now, setNow] = useState<number>(Date.now());
+
+  useEffect(() => {
+    const update = () => setNow(Date.now());
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const createdMs = getTimestampMs(createdAt);
+  const target = expiresAt ? getTimestampMs(expiresAt) : (createdMs + 6 * 3600 * 1000);
+  const timeLeft = Math.max(0, target - now);
+  const elapsed = Math.max(0, now - createdMs);
+
+  const TWENTY_MIN_MS = 20 * 60 * 1000;
+  const isBefore20Min = enable20MinRule && (elapsed < TWENTY_MIN_MS);
+  const isExpired = timeLeft <= 0;
+
+  useEffect(() => {
+    if (isExpired && onExpire) {
+      onExpire();
+    }
+  }, [isExpired, onExpire]);
+
+  const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+  const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+  const formattedTime = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+  const lockRemaining = Math.max(0, TWENTY_MIN_MS - elapsed);
+  const lockM = Math.floor(lockRemaining / 60000);
+  const lockS = Math.floor((lockRemaining % 60000) / 1000);
+  const formattedLockWait = `${String(lockM).padStart(2, '0')}:${String(lockS).padStart(2, '0')}`;
+
+  if (variant === 'admin') {
+    if (isExpired) {
+      return (
+        <span className={`inline-flex items-center gap-1 font-mono text-[10px] font-bold px-2 py-0.5 rounded-lg border bg-zinc-800 text-zinc-400 border-zinc-700/60 ${className}`}>
+          মেয়াদ শেষ
+        </span>
+      );
+    }
+
+    if (isBefore20Min) {
+      return (
+        <span className={`inline-flex items-center gap-1 font-mono text-[11px] font-bold px-2 py-0.5 rounded-lg bg-rose-950/70 text-rose-300 border border-rose-500/50 shadow-sm ${className}`}>
+          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping shrink-0" />
+          <Clock size={11} className="text-rose-400 shrink-0" />
+          <span>{formattedTime}</span>
+          <span className="text-[9px] text-rose-400/90 font-sans font-medium">({formattedLockWait} লক)</span>
+        </span>
+      );
+    }
+
+    // 20 minutes passed -> GREEN!
+    return (
+      <span className={`inline-flex items-center gap-1 font-mono text-[11px] font-bold px-2 py-0.5 rounded-lg bg-emerald-950/70 text-emerald-300 border border-emerald-500/50 shadow-sm ${className}`}>
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+        <Clock size={11} className="text-emerald-400 shrink-0" />
+        <span>{formattedTime}</span>
+        <span className="text-[9px] text-emerald-400/90 font-sans font-medium">(সক্রিয়)</span>
+      </span>
+    );
+  }
+
+  if (variant === 'box') {
+    if (isExpired) {
+      return (
+        <div className={`w-full bg-gradient-to-r from-zinc-900 via-zinc-800 to-zinc-900 border-2 border-zinc-700 rounded-2xl p-3.5 flex items-center justify-between shadow-sm ${className}`}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-zinc-700/50 text-zinc-400 flex items-center justify-center shrink-0">
+              <Clock size={20} />
+            </div>
+            <div className="text-left">
+              <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">মেয়াদ শেষ (EXPIRED)</p>
+              <p className="text-[11px] text-zinc-500">৬ ঘণ্টার মেয়াদ অতিক্রান্ত হয়েছে</p>
+            </div>
+          </div>
+          <div className="font-mono text-base font-black px-3 py-1.5 rounded-xl border tracking-widest bg-zinc-950 text-zinc-500 border-zinc-800">
+            00:00:00
+          </div>
+        </div>
+      );
+    }
+
+    if (isBefore20Min) {
+      return (
+        <div className={`w-full bg-gradient-to-r from-rose-950/80 via-red-950/70 to-rose-950/80 border-2 border-rose-500/80 rounded-2xl p-3.5 flex items-center justify-between shadow-[0_0_25px_rgba(244,63,94,0.3)] ${className}`}>
+          <div className="flex items-center gap-2.5 min-w-0 pr-2">
+            <div className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center justify-center shrink-0 shadow-[0_0_10px_rgba(244,63,94,0.3)]">
+              <Clock size={20} className="text-rose-400 animate-spin" />
+            </div>
+            <div className="text-left min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-wider text-rose-300 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping shrink-0" />
+                🔴 ২০ মিনিট লক (পেমেন্ট গ্রহণ নিষেধ)
+              </p>
+              <p className="text-[11px] font-bold text-white/95 truncate">
+                পেমেন্ট পাঠাতে আর <strong className="text-rose-300 underline font-black">{formattedLockWait}</strong> মিনিট অপেক্ষা করুন
+              </p>
+            </div>
+          </div>
+          <div className="font-mono text-base font-black px-3 py-1.5 rounded-xl border-2 tracking-widest bg-rose-950 text-rose-300 border-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.4)] shrink-0">
+            {formattedTime}
+          </div>
+        </div>
+      );
+    }
+
+    // 20 minutes passed -> GREEN!
+    return (
+      <div className={`w-full bg-gradient-to-r from-emerald-950/80 via-teal-950/70 to-emerald-950/80 border-2 border-emerald-500/80 rounded-2xl p-3.5 flex items-center justify-between shadow-[0_0_25px_rgba(16,185,129,0.3)] ${className}`}>
+        <div className="flex items-center gap-2.5 min-w-0 pr-2">
+          <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center shrink-0 shadow-[0_0_10px_rgba(16,185,129,0.3)]">
+            <Clock size={20} className="text-emerald-400 animate-pulse" />
+          </div>
+          <div className="text-left min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+              🟢 ২০ মিনিট অতিক্রান্ত (পেমেন্ট উন্মুক্ত)
+            </p>
+            <p className="text-[11px] font-bold text-white/95 truncate">
+              নির্ধারিত সময়ের মধ্যে পেমেন্ট সম্পন্ন করতে পারবেন
+            </p>
+          </div>
+        </div>
+        <div className="font-mono text-base font-black px-3 py-1.5 rounded-xl border-2 tracking-widest bg-emerald-950 text-emerald-300 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)] shrink-0">
+          {formattedTime}
+        </div>
+      </div>
+    );
+  }
+
+  if (variant === 'compact') {
+    if (isExpired) {
+      return (
+        <span className={`inline-flex items-center gap-1 font-mono text-[11px] font-black px-2 py-0.5 rounded-lg border bg-zinc-800 text-zinc-400 border-zinc-700 ${className}`}>
+          Expired
+        </span>
+      );
+    }
+    if (isBefore20Min) {
+      return (
+        <span className={`inline-flex items-center gap-1 font-mono text-[11px] font-black px-2.5 py-0.5 rounded-lg border-2 bg-rose-500/20 text-rose-300 border-rose-500/60 shadow-[0_0_8px_rgba(244,63,94,0.3)] ${className}`}>
+          <Clock size={11} className="text-rose-400 animate-spin" />
+          🔴 {formattedTime} (লক)
+        </span>
+      );
+    }
+    return (
+      <span className={`inline-flex items-center gap-1 font-mono text-[11px] font-black px-2.5 py-0.5 rounded-lg border-2 bg-emerald-500/20 text-emerald-300 border-emerald-500/60 shadow-[0_0_8px_rgba(16,185,129,0.3)] ${className}`}>
+        <Clock size={11} className="text-emerald-400 animate-pulse" />
+        🟢 {formattedTime} (সক্রিয়)
+      </span>
+    );
+  }
+
+  // variant === 'badge'
+  if (isExpired) {
+    return (
+      <div className={`inline-flex items-center gap-1.5 font-mono text-xs font-black px-2.5 py-1 rounded-xl border bg-zinc-800 text-zinc-400 border-zinc-700 ${className}`}>
+        মেয়াদ শেষ
+      </div>
+    );
+  }
+
+  if (isBefore20Min) {
+    return (
+      <div className={`inline-flex items-center gap-1.5 font-mono text-xs font-black px-3 py-1 rounded-xl border-2 bg-gradient-to-r from-rose-950 to-red-950 text-rose-300 border-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.35)] ${className}`}>
+        <Clock size={13} className="text-rose-400 animate-spin" />
+        <span>🔴 {formattedTime} (২০ মি. লক)</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`inline-flex items-center gap-1.5 font-mono text-xs font-black px-3 py-1 rounded-xl border-2 bg-gradient-to-r from-emerald-950 to-teal-950 text-emerald-300 border-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.35)] ${className}`}>
+      <Clock size={13} className="text-emerald-400" />
+      <span>🟢 {formattedTime} (পেমেন্ট সক্রিয়)</span>
+    </div>
+  );
+}
 
 // --- Main App Component ---
 
@@ -484,11 +699,35 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUr
   const [activeMember, setActiveMember] = useState<TeamMember | null>(null);
   const [showOptionModal, setShowOptionModal] = useState(false);
   
-  const [activeModal, setActiveModal] = useState<'none' | 'withdraw' | 'seat_booking' | 'history' | 'post_booking' | 'invoice'>('none');
+  const [activeModal, setActiveModal] = useState<'none' | 'withdraw' | 'seat_booking' | 'sure_shot' | 'sure_shot_invoice' | 'history' | 'post_booking' | 'invoice'>('none');
   const [latestBooking, setLatestBooking] = useState<RequestData | null>(null);
+  const [latestSureShot, setLatestSureShot] = useState<RequestData | null>(null);
   const [history, setHistory] = useState<RequestData[]>([]);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'leader' | 'trainer'>('leader');
+
+  // Auto-purge sure_shot pre-bookings older than 6 hours
+  useEffect(() => {
+    const purgeExpired = async () => {
+      const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+      const now = Date.now();
+      for (const req of history) {
+        if (req.type === 'sure_shot') {
+          const createdMs = getTimestampMs(req.createdAt);
+          if (now - createdMs >= SIX_HOURS_MS) {
+            try {
+              await deleteDoc(doc(db, 'requests', req.id));
+            } catch (err) {
+              console.error('Failed to auto-purge expired sure shot:', err);
+            }
+          }
+        }
+      }
+    };
+    purgeExpired();
+    const interval = setInterval(purgeExpired, 15000);
+    return () => clearInterval(interval);
+  }, [history]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -706,41 +945,41 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUr
         )}
       </AnimatePresence>
 
-      {/* Option Selection Modal (Withdraw Request vs Seat Book) */}
+      {/* Option Selection Modal (Withdraw Request vs Seat Book vs Sure Shot) */}
       <AnimatePresence>
         {showOptionModal && activeMember && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowOptionModal(false)} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-[#121316] rounded-3xl p-6 border border-white/10 shadow-2xl space-y-5 z-10">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-[#121316] rounded-3xl p-5 sm:p-6 border border-white/10 shadow-2xl space-y-4 sm:space-y-5 z-10 box-border overflow-hidden">
               <div className="flex items-center justify-between border-b border-white/10 pb-4">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <MemberDesignBadge name={activeMember.name} role={activeMember.role} size="md" />
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400">Select Action</p>
-                    <h3 className="text-lg font-extrabold text-white">{activeMember.name}</h3>
+                    <h3 className="text-lg font-extrabold text-white truncate">{activeMember.name}</h3>
                   </div>
                 </div>
-                <button onClick={() => setShowOptionModal(false)} className="text-white/40 hover:text-white"><XCircle size={22} /></button>
+                <button onClick={() => setShowOptionModal(false)} className="text-white/40 hover:text-white shrink-0 ml-2"><XCircle size={22} /></button>
               </div>
 
-              <div className="grid gap-3">
+              <div className="flex flex-col gap-3 w-full min-w-0">
                 <button
                   onClick={() => {
                     setShowOptionModal(false);
                     setActiveModal('withdraw');
                   }}
-                  className="p-4 bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-indigo-500/30 hover:border-indigo-500/60 rounded-2xl text-left flex items-center justify-between group transition-all"
+                  className="w-full max-w-full box-border p-3.5 sm:p-4 bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-indigo-500/30 hover:border-indigo-500/60 rounded-2xl text-left flex items-center justify-between group transition-all min-w-0 overflow-hidden"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30 shrink-0">
                       <Banknote size={20} />
                     </div>
-                    <div className="min-w-0">
-                      <h4 className="font-bold text-white group-hover:text-indigo-300 transition-colors truncate">Withdraw Request</h4>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-bold text-white group-hover:text-indigo-300 transition-colors text-sm sm:text-base truncate">Withdraw Request</h4>
                       <p className="text-xs text-white/50 truncate">Send a withdrawal request</p>
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-white/30 group-hover:text-white shrink-0 ml-1" />
+                  <ChevronRight size={18} className="text-white/30 group-hover:text-white shrink-0 ml-2" />
                 </button>
 
                 <button
@@ -748,18 +987,37 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUr
                     setShowOptionModal(false);
                     setActiveModal('seat_booking');
                   }}
-                  className="p-4 bg-gradient-to-r from-cyan-900/40 to-blue-900/40 border border-cyan-500/30 hover:border-cyan-500/60 rounded-2xl text-left flex items-center justify-between group transition-all"
+                  className="w-full max-w-full box-border p-3.5 sm:p-4 bg-gradient-to-r from-cyan-900/40 to-blue-900/40 border border-cyan-500/30 hover:border-cyan-500/60 rounded-2xl text-left flex items-center justify-between group transition-all min-w-0 overflow-hidden"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30 shrink-0">
                       <Sparkles size={20} />
                     </div>
-                    <div className="min-w-0">
-                      <h4 className="font-bold text-white group-hover:text-cyan-300 transition-colors truncate">Seat Book</h4>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-bold text-white group-hover:text-cyan-300 transition-colors text-sm sm:text-base truncate">Seat Book</h4>
                       <p className="text-xs text-white/50 truncate">Fill up seat booking form</p>
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-white/30 group-hover:text-white shrink-0 ml-1" />
+                  <ChevronRight size={18} className="text-white/30 group-hover:text-white shrink-0 ml-2" />
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowOptionModal(false);
+                    setActiveModal('sure_shot');
+                  }}
+                  className="w-full max-w-full box-border p-3.5 sm:p-4 bg-gradient-to-r from-amber-900/40 to-orange-900/40 border border-amber-500/30 hover:border-amber-500/60 rounded-2xl text-left flex items-center justify-between group transition-all min-w-0 overflow-hidden"
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0">
+                      <Zap size={20} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-bold text-white group-hover:text-amber-300 transition-colors text-sm sm:text-base truncate">Sure Shot Pre-Booking</h4>
+                      <p className="text-xs text-white/50 truncate">শিউরশট প্রি-বুকিং করুন (৬ ঘণ্টা মেয়াদ)</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={18} className="text-white/30 group-hover:text-white shrink-0 ml-2" />
                 </button>
 
                 <button
@@ -767,18 +1025,18 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUr
                     setShowOptionModal(false);
                     setActiveModal('history');
                   }}
-                  className="p-4 bg-gradient-to-r from-emerald-900/40 to-teal-900/40 border border-emerald-500/30 hover:border-emerald-500/60 rounded-2xl text-left flex items-center justify-between group transition-all"
+                  className="w-full max-w-full box-border p-3.5 sm:p-4 bg-gradient-to-r from-emerald-900/40 to-teal-900/40 border border-emerald-500/30 hover:border-emerald-500/60 rounded-2xl text-left flex items-center justify-between group transition-all min-w-0 overflow-hidden"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30 shrink-0">
                       <HistoryIcon size={20} />
                     </div>
-                    <div className="min-w-0">
-                      <h4 className="font-bold text-white group-hover:text-emerald-300 transition-colors truncate">My History</h4>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-bold text-white group-hover:text-emerald-300 transition-colors text-sm sm:text-base truncate">My History</h4>
                       <p className="text-xs text-white/50 truncate">View account history</p>
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-white/30 group-hover:text-white shrink-0 ml-1" />
+                  <ChevronRight size={18} className="text-white/30 group-hover:text-white shrink-0 ml-2" />
                 </button>
               </div>
             </motion.div>
@@ -788,6 +1046,26 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUr
 
       {/* Main Request Forms & History Modals */}
       <AnimatePresence>
+        {activeModal === 'sure_shot' && activeMember && (
+          <SureShotPreBookingModal 
+            member={activeMember}
+            sender={user}
+            history={history}
+            onClose={() => setActiveModal('none')}
+            onSuccessSubmitted={(req) => {
+              setLatestSureShot(req);
+              setActiveModal('sure_shot_invoice');
+            }}
+            onOpenHistory={() => setActiveModal('history')}
+          />
+        )}
+        {activeModal === 'sure_shot_invoice' && latestSureShot && (
+          <SureShotInvoiceModal 
+            booking={latestSureShot}
+            onClose={() => setActiveModal('none')}
+            onOpenHistory={() => setActiveModal('history')}
+          />
+        )}
         {activeModal === 'seat_booking' && activeMember && (
           <SeatBookingModal 
             member={activeMember}
@@ -839,10 +1117,404 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUr
               setLatestBooking(req);
               setActiveModal('invoice');
             }}
+            onSelectSureShotInvoice={(req) => {
+              setLatestSureShot(req);
+              setActiveModal('sure_shot_invoice');
+            }}
           />
         )}
       </AnimatePresence>
     </motion.div>
+  );
+}
+
+// --- Sure Shot Pre-Booking Modal ---
+
+function SureShotPreBookingModal({
+  member,
+  sender,
+  history,
+  onClose,
+  onSuccessSubmitted,
+  onOpenHistory
+}: {
+  member: TeamMember;
+  sender: UserProfile | null;
+  history: RequestData[];
+  onClose: () => void;
+  onSuccessSubmitted: (req: RequestData) => void;
+  onOpenHistory: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [showConfirmPopup, setShowConfirmPopup] = useState(false);
+
+  // Count existing sure shot requests for this member to calculate sequence
+  const existingMemberSureShots = history.filter(r => 
+    r.type === 'sure_shot' && 
+    ((r.recipientName && r.recipientName.trim().toLowerCase() === member.name.trim().toLowerCase()) ||
+     (r.submittedByUid && r.submittedByUid === member.id))
+  );
+  const sequenceNumber = existingMemberSureShots.length + 1;
+
+  const handleFinalSubmit = async () => {
+    setLoading(true);
+
+    const generatedRef = `SSB-${Math.floor(100000 + Math.random() * 900000)}`;
+    const now = new Date();
+    const expiresAtDate = new Date(now.getTime() + 6 * 60 * 60 * 1000);
+
+    try {
+      const docRef = await addDoc(collection(db, 'requests'), {
+        refId: generatedRef,
+        type: 'sure_shot',
+        senderId: sender?.uid || 'guest',
+        senderName: sender?.name || member.name,
+        senderNumber: member.number || '',
+        senderRole: sender?.role || 'user',
+        recipientName: member.name,
+        recipientNumber: member.number || '',
+        amount: 0,
+        bookingSequence: sequenceNumber,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        expiresAt: expiresAtDate,
+        submittedByUid: member.id,
+        note: `Sure Shot Pre-Booking #${sequenceNumber}`
+      });
+
+      saveMySubmittedRequestId(docRef.id);
+
+      const createdReq: RequestData = {
+        id: docRef.id,
+        refId: generatedRef,
+        type: 'sure_shot',
+        senderId: sender?.uid || 'guest',
+        senderName: sender?.name || member.name,
+        senderNumber: member.number || '',
+        senderRole: sender?.role || 'user',
+        recipientName: member.name,
+        recipientNumber: member.number || '',
+        amount: 0,
+        bookingSequence: sequenceNumber,
+        status: 'pending',
+        createdAt: now,
+        expiresAt: expiresAtDate,
+        submittedByUid: member.id,
+        note: `Sure Shot Pre-Booking #${sequenceNumber}`
+      };
+
+      setShowConfirmPopup(false);
+      onSuccessSubmitted(createdReq);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'requests');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isLeader = member.role === 'leader';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 overflow-y-auto">
+      <motion.div 
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 bg-black/85 backdrop-blur-md" 
+      />
+      <motion.div 
+        initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
+        className="relative w-full max-w-sm bg-[#0d0f17] border-2 border-amber-500/40 rounded-3xl p-5 shadow-[0_0_35px_rgba(245,158,11,0.2)] my-auto z-10 flex flex-col gap-4 overflow-hidden"
+      >
+        {/* Amber-Orange Top Glow bar */}
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-500 via-orange-500 to-yellow-400" />
+
+        {/* Member Header Card */}
+        <div className="flex items-center justify-between pb-3 border-b border-white/10 pt-1">
+          <div className="flex items-center gap-3">
+            <MemberDesignBadge name={member.name} role={member.role} size="md" />
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[9px] uppercase font-black text-amber-400 tracking-wider">
+                  {isLeader ? 'টিম লিডার' : 'টিম ট্রেইনার'}
+                </span>
+                <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  বুকিং #{sequenceNumber}
+                </span>
+              </div>
+              <h3 className="text-base font-extrabold text-white">{member.name}</h3>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-white/40 hover:text-white rounded-lg transition-colors">
+            <XCircle size={20} />
+          </button>
+        </div>
+
+        {/* Red Highlighted Warning Box */}
+        <div className="bg-gradient-to-r from-rose-950/90 via-red-950/80 to-rose-950/90 border-2 border-rose-500 rounded-2xl p-4 text-center space-y-2 shadow-[0_0_25px_rgba(244,63,94,0.3)]">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/25 text-rose-300 border border-rose-500/50 text-[10px] font-black uppercase tracking-wider animate-pulse">
+            <AlertTriangle size={13} className="text-rose-400" />
+            ⚠️ জরুরি সতর্কবার্তা ও নিয়মাবলী
+          </div>
+          <h2 className="text-sm font-black text-white">
+            শিউরশট প্রি-বুকিং করার <span className="text-rose-400 underline decoration-2">কমপক্ষে ২০ মিনিট পর</span> পেমেন্ট করাতে হবে
+          </h2>
+          <div className="bg-rose-900/60 border border-rose-500/40 rounded-xl p-2 text-xs font-black text-rose-200">
+            এর আগে পেমেন্ট করালে শিউরশট হবে না!
+          </div>
+          <p className="text-[11px] font-semibold text-rose-200/90 leading-relaxed">
+            প্রি-বুকিংয়ের মেয়াদ থাকবে মোট ৬ ঘণ্টা। ৬ ঘণ্টা পর অটোমেটিক্যালি এটি ডিসেবল/বাতিল হয়ে যাবে।
+          </p>
+        </div>
+
+        {/* Confirmation Guideline Box */}
+        <div className="bg-[#121622] border border-amber-500/30 rounded-2xl p-3.5 text-center space-y-1.5">
+          <p className="text-xs font-bold text-amber-200 leading-snug">
+            নিচে থাকা <strong className="text-white underline font-extrabold">কনফার্ম প্রি-বুকিং বাটনে</strong> ক্লিক করলে সিট বুকিং নিশ্চিতকরণ পপআপ আসবে।
+          </p>
+          <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold text-amber-400">
+            <Clock size={12} />
+            <span>নিশ্চিত করার সাথে সাথে ৬ ঘণ্টার কাউন্টডাউন টাইমার চালু হবে</span>
+          </div>
+        </div>
+
+        {/* Action Button */}
+        <div className="space-y-3 pt-1">
+          <button 
+            type="button"
+            onClick={() => setShowConfirmPopup(true)}
+            className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:opacity-95 text-black font-black text-xs tracking-wider uppercase rounded-xl shadow-lg shadow-orange-500/25 transition-all flex items-center justify-center gap-2 active:scale-98"
+          >
+            <CheckCircle2 size={16} />
+            কনফার্ম প্রি-বুকিং (Confirm Pre-Booking)
+          </button>
+        </div>
+
+        {/* View History Button */}
+        <button
+          type="button"
+          onClick={onOpenHistory}
+          className="w-full py-2.5 bg-[#141724] hover:bg-[#1c2133] text-white/70 hover:text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 border border-white/5"
+        >
+          <HistoryIcon size={14} /> My History (পূর্বের বুকিং ইতিহাস দেখুন)
+        </button>
+
+        {/* Secondary Confirmation Popup Modal */}
+        <AnimatePresence>
+          {showConfirmPopup && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                exit={{ opacity: 0 }}
+                onClick={() => !loading && setShowConfirmPopup(false)}
+                className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              />
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="relative w-full max-w-xs bg-[#111420] border-2 border-amber-500/60 rounded-3xl p-5 shadow-[0_0_35px_rgba(245,158,11,0.35)] z-10 text-center space-y-4"
+              >
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/25">
+                  <CheckCircle2 size={24} />
+                </div>
+
+                <div className="space-y-1.5">
+                  <h3 className="text-base font-black text-white">সিট বুকিং নিশ্চিতকরণ</h3>
+                  <p className="text-xs text-amber-200 font-bold leading-relaxed">
+                    সিট বুকিং নিশ্চিত করতে কনফার্ম বাটনে আবার ক্লিক করতে হবে।
+                  </p>
+                  <div className="pt-1">
+                    <span className="text-[11px] font-bold text-white/80 bg-white/5 px-2.5 py-1 rounded-lg border border-white/10 inline-block">
+                      {member.name} • বুকিং #{sequenceNumber}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => setShowConfirmPopup(false)}
+                    className="py-2.5 bg-[#1a1f30] hover:bg-[#232a40] text-white/70 hover:text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+                  >
+                    বাতিল (Cancel)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={handleFinalSubmit}
+                    className="py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:opacity-95 text-black font-black text-xs rounded-xl shadow-lg shadow-orange-500/25 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  >
+                    {loading ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                        প্রসেসিং...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={14} /> কনফার্ম করুন
+                      </>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    </div>
+  );
+}
+
+// --- Sure Shot Digital Receipt / Invoice Modal ---
+
+function SureShotInvoiceModal({ 
+  booking, onClose, onOpenHistory 
+}: { 
+  booking: RequestData, 
+  onClose: () => void,
+  onOpenHistory?: () => void
+}) {
+  const receiptRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
+
+  const issueDate = booking.createdAt?.toDate 
+    ? booking.createdAt.toDate().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  const refId = booking.refId || `SSB-${Math.floor(100000 + Math.random() * 900000)}`;
+
+  const handleDownload = async () => {
+    if (!receiptRef.current) return;
+    setDownloading(true);
+    try {
+      const dataUrl = await toPng(receiptRef.current, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: '#0a0d18',
+      });
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `Sure_Shot_Invoice_${refId}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setDownloadSuccess(true);
+      setTimeout(() => setDownloadSuccess(false), 3000);
+    } catch (err) {
+      console.error('Failed to capture invoice:', err);
+      window.print();
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 overflow-y-auto">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 bg-black/85 backdrop-blur-md" />
+      
+      <div className="relative w-full max-w-sm z-10 my-auto flex flex-col gap-3">
+        {/* Printable/Downloadable Container */}
+        <motion.div 
+          ref={receiptRef}
+          initial={{ scale: 0.9, opacity: 0 }} 
+          animate={{ scale: 1, opacity: 1 }} 
+          exit={{ scale: 0.9, opacity: 0 }}
+          className="w-full bg-[#0a0d18] rounded-3xl p-5 border border-amber-500/40 shadow-2xl flex flex-col gap-3 relative overflow-hidden"
+        >
+          {/* Top Gold Gradient Glow Bar */}
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-500 via-orange-500 to-yellow-400" />
+
+          {/* Header Bar */}
+          <div className="flex items-center justify-between pb-3 border-b border-white/10 pt-1">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-black flex items-center justify-center shadow-md shadow-orange-500/20 shrink-0 font-black">
+                <Zap size={20} className="text-black" />
+              </div>
+              <div>
+                <h2 className="text-base font-black text-white tracking-wider">UNITY EARNING</h2>
+                <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Sure Shot Pre-Booking</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                #{booking.bookingSequence || 1}
+              </span>
+              <Badge status={booking.status || 'pending'} />
+            </div>
+          </div>
+
+          {/* Clean 6-Hour Countdown Timer */}
+          <div className="bg-[#121622] rounded-2xl p-3 border border-white/10 flex items-center justify-between">
+            <span className="text-xs font-bold text-white/70 flex items-center gap-1.5">
+              <Clock size={15} className="text-amber-400" />
+              সময়সীমা (Time Left):
+            </span>
+            <CountdownTimer 
+              createdAt={booking.createdAt} 
+              expiresAt={booking.expiresAt} 
+              variant="compact" 
+            />
+          </div>
+
+          {/* Invoice Details */}
+          <div className="bg-[#121622] rounded-2xl p-3.5 border border-white/10 space-y-2.5 text-xs">
+            <div className="flex justify-between items-center pb-2 border-b border-white/5">
+              <span className="text-white/40 text-[11px] uppercase font-bold tracking-wider">Booking ID</span>
+              <span className="font-mono font-bold text-amber-300 text-xs">{refId}</span>
+            </div>
+            <div className="flex justify-between items-center pb-2 border-b border-white/5">
+              <span className="text-white/40 text-[11px] uppercase font-bold tracking-wider">Team Member</span>
+              <span className="font-bold text-white text-xs">{booking.recipientName || 'N/A'}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-white/40 text-[11px] uppercase font-bold tracking-wider">Issue Time</span>
+              <span className="font-semibold text-white/80 text-[11px]">{issueDate}</span>
+            </div>
+          </div>
+
+          {/* Concise Footer Note */}
+          <p className="text-[10px] text-center text-amber-300/80 font-medium pt-0.5">
+            * প্রি-বুকিংয়ের ২০ মিনিট পর পেমেন্ট গ্রহণ করা হবে • মেয়াদ ৬ ঘণ্টা
+          </p>
+        </motion.div>
+
+        {/* Success Alert */}
+        {downloadSuccess && (
+          <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold py-2 px-3 rounded-xl text-center flex items-center justify-center gap-2">
+            <CheckCircle2 size={16} /> ইনভয়েস সফলভাবে ডাউনলোড হয়েছে!
+          </motion.div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <button
+            onClick={onClose}
+            className="py-3 bg-[#121826] hover:bg-[#1a2336] border border-white/10 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 active:scale-98"
+          >
+            <XCircle size={16} className="text-white/60" /> CLOSE (বন্ধ করুন)
+          </button>
+          <button
+            onClick={handleDownload}
+            disabled={downloading}
+            className="py-3 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:opacity-95 text-black font-black text-xs rounded-xl shadow-lg shadow-orange-500/25 transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50"
+          >
+            {downloading ? (
+              <>
+                <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                প্রসেসিং...
+              </>
+            ) : (
+              <>
+                <Download size={16} /> ডাউনলোড (DOWNLOAD)
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -929,15 +1601,13 @@ function InvoiceReceiptModal({
     if (!receiptRef.current) return;
     setDownloading(true);
     try {
-      const canvas = await html2canvas(receiptRef.current, {
-        scale: 3,
-        useCORS: true,
+      const dataUrl = await toPng(receiptRef.current, {
+        cacheBust: true,
+        pixelRatio: 2,
         backgroundColor: '#090d18',
-        logging: false,
       });
-      const image = canvas.toDataURL('image/png');
       const link = document.createElement('a');
-      link.href = image;
+      link.href = dataUrl;
       link.download = `Seat_Booking_Receipt_${refId.replace('#', '')}.png`;
       document.body.appendChild(link);
       link.click();
@@ -945,7 +1615,7 @@ function InvoiceReceiptModal({
       setDownloadSuccess(true);
       setTimeout(() => setDownloadSuccess(false), 3000);
     } catch (err) {
-      console.error('Failed to capture receipt canvas:', err);
+      console.error('Failed to capture receipt:', err);
       window.print();
     } finally {
       setDownloading(false);
@@ -1525,16 +2195,17 @@ function WithdrawModal({
 // --- Isolated User History Modal ---
 
 function HistoryModal({ 
-  user, activeMember, history, onClose, onOpenBooking, onSelectInvoice
+  user, activeMember, history, onClose, onOpenBooking, onSelectInvoice, onSelectSureShotInvoice
 }: { 
   user: UserProfile | null,
   activeMember?: TeamMember | null,
   history: RequestData[], 
   onClose: () => void,
   onOpenBooking?: () => void,
-  onSelectInvoice?: (req: RequestData) => void
+  onSelectInvoice?: (req: RequestData) => void,
+  onSelectSureShotInvoice?: (req: RequestData) => void
 }) {
-  const [subTab, setSubTab] = useState<'seat_booking' | 'withdraw'>('seat_booking');
+  const [subTab, setSubTab] = useState<'seat_booking' | 'sure_shot' | 'withdraw'>('seat_booking');
 
   // Strict user isolation: show requests created for this specific active member account or on this device
   const mySubmittedIds = getMySubmittedRequestIds();
@@ -1550,8 +2221,14 @@ function HistoryModal({
   });
 
   const seatBookings = userFiltered.filter(h => h.type === 'seat_booking');
-  const withdraws = userFiltered.filter(h => h.type === 'withdraw' || !h.type);
-  const filteredHistory = subTab === 'seat_booking' ? seatBookings : withdraws;
+  const sureShotBookings = userFiltered.filter(h => h.type === 'sure_shot');
+  const withdraws = userFiltered.filter(h => h.type === 'withdraw' || (!h.type && h.amount > 0));
+  
+  const filteredHistory = subTab === 'seat_booking' 
+    ? seatBookings 
+    : subTab === 'sure_shot' 
+      ? sureShotBookings 
+      : withdraws;
 
   const getPaymentBrandStyle = (method?: string) => {
     const m = (method || '').toUpperCase();
@@ -1573,7 +2250,7 @@ function HistoryModal({
         className="relative w-full max-w-sm h-[85vh] bg-[#0c0f17] rounded-3xl p-5 border border-white/10 shadow-2xl flex flex-col z-10 my-auto overflow-hidden"
       >
         {/* Top Glow Accent Bar */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-500" />
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-500 via-amber-500 to-purple-500" />
 
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-white/10 pt-1">
@@ -1589,28 +2266,39 @@ function HistoryModal({
           </button>
         </div>
 
-        {/* Section Segment Tabs */}
-        <div className="grid grid-cols-2 bg-[#121622] p-1 rounded-2xl border border-white/10 my-3 gap-1">
+        {/* Section Segment Tabs: 3 Tabs (Seat, Sure Shot, Withdraw) */}
+        <div className="grid grid-cols-3 bg-[#121622] p-1 rounded-2xl border border-white/10 my-3 gap-1">
           <button 
             onClick={() => setSubTab('seat_booking')}
-            className={`py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+            className={`py-2 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1 ${
               subTab === 'seat_booking' 
                 ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm' 
                 : 'text-white/40 hover:text-white'
             }`}
           >
-            <Sparkles size={14} />
-            Seat Booking ({seatBookings.length})
+            <Sparkles size={12} />
+            Seat ({seatBookings.length})
+          </button>
+          <button 
+            onClick={() => setSubTab('sure_shot')}
+            className={`py-2 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1 ${
+              subTab === 'sure_shot' 
+                ? 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-300 border border-amber-500/40 shadow-sm' 
+                : 'text-white/40 hover:text-white'
+            }`}
+          >
+            <Zap size={12} />
+            Sure Shot ({sureShotBookings.length})
           </button>
           <button 
             onClick={() => setSubTab('withdraw')}
-            className={`py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+            className={`py-2 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1 ${
               subTab === 'withdraw' 
                 ? 'bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm' 
                 : 'text-white/40 hover:text-white'
             }`}
           >
-            <Banknote size={14} />
+            <Banknote size={12} />
             Withdraw ({withdraws.length})
           </button>
         </div>
@@ -1621,6 +2309,66 @@ function HistoryModal({
             const formattedDate = req.createdAt?.toDate 
               ? req.createdAt.toDate().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
               : 'Just now';
+
+            // Custom Card for Sure Shot Pre-Booking
+            if (req.type === 'sure_shot') {
+              return (
+                <div key={req.id} className="bg-[#121622] p-4 rounded-2xl border border-amber-500/20 space-y-3 shadow-md hover:border-amber-500/40 transition-all">
+                  {/* Top Badge Row */}
+                  <div className="flex items-center justify-between pb-2 border-b border-white/5 flex-wrap gap-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[9px] font-black uppercase text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-md border border-amber-500/30 flex items-center gap-1">
+                        <Zap size={10} /> Sure Shot Pre-Booking
+                      </span>
+                      <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-white/10 text-white border border-white/10">
+                        বুকিং #{req.bookingSequence || 1}
+                      </span>
+                    </div>
+                    <Badge status={req.status || 'pending'} />
+                  </div>
+
+                  {/* 6-Hour Live Reverse Countdown Timer */}
+                  <div className="flex items-center justify-between bg-[#0a0d14] p-2.5 rounded-xl border border-amber-500/20">
+                    <span className="text-[10px] uppercase font-bold text-amber-300/80">পেমেন্ট বাকি সময়:</span>
+                    <CountdownTimer createdAt={req.createdAt} expiresAt={req.expiresAt} variant="compact" />
+                  </div>
+
+                  {/* Main Info Box */}
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="space-y-1 min-w-0">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+                        TRAINER / LEADER (কাউন্সেলর / ট্রেইনার)
+                      </p>
+                      <h3 className="font-extrabold text-white text-sm truncate">{req.recipientName || 'N/A'}</h3>
+                      
+                      {req.senderName && (
+                        <p className="text-xs text-white/70">
+                          Candidate: <strong className="text-amber-300">{req.senderName}</strong>
+                        </p>
+                      )}
+                      <p className="text-[10px] text-white/40 font-mono flex items-center gap-1">
+                        <Clock size={11} className="text-white/30" /> {formattedDate}
+                      </p>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">BOOKING ID</p>
+                      <p className="font-mono font-black text-xs text-amber-400">{req.refId}</p>
+                    </div>
+                  </div>
+
+                  {/* Invoice View Button */}
+                  {onSelectSureShotInvoice && (
+                    <button
+                      onClick={() => onSelectSureShotInvoice(req)}
+                      className="w-full py-2.5 bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 hover:from-amber-500/25 hover:to-orange-500/25 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-98 shadow-sm"
+                    >
+                      <FileText size={15} /> View & Download Invoice (ইনভয়েস দেখুন ও ডাউনলোড)
+                    </button>
+                  )}
+                </div>
+              );
+            }
 
             return (
               <div key={req.id} className="bg-[#121622] p-4 rounded-2xl border border-white/10 space-y-3 shadow-md hover:border-white/20 transition-all">
@@ -1704,7 +2452,9 @@ function HistoryModal({
             <div className="text-center py-16 text-white/30 text-xs space-y-2">
               <HistoryIcon size={40} className="mx-auto text-white/20" />
               <p className="font-bold text-white/40">কোন রেকর্ড পাওয়া যায়নি (No Records Found)</p>
-              <p className="text-[11px] text-white/30">Your {subTab === 'seat_booking' ? 'seat booking' : 'withdraw'} requests will appear here</p>
+              <p className="text-[11px] text-white/30">
+                Your {subTab === 'seat_booking' ? 'seat booking' : subTab === 'sure_shot' ? 'sure shot pre-booking' : 'withdraw'} requests will appear here
+              </p>
             </div>
           )}
         </div>
@@ -1738,7 +2488,7 @@ function AdminDashboard({
   appLogoUrl?: string,
   key?: string
 }) {
-  const [activeTab, setActiveTab] = useState<'seat_booking' | 'withdraw' | 'members' | 'settings'>('seat_booking');
+  const [activeTab, setActiveTab] = useState<'seat_booking' | 'sure_shot' | 'withdraw' | 'members' | 'settings'>('seat_booking');
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [showAddMember, setShowAddMember] = useState(false);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
@@ -1789,29 +2539,35 @@ function AdminDashboard({
         </div>
       </header>
 
-      {/* Admin Sub-Navigation */}
-      <div className="grid grid-cols-4 bg-[#18181b] p-1 rounded-2xl border border-white/5 text-[11px] font-bold">
+      {/* Admin Sub-Navigation: 5 Tabs */}
+      <div className="grid grid-cols-5 bg-[#18181b] p-1 rounded-2xl border border-white/5 text-[10px] sm:text-[11px] font-bold">
         <button 
           onClick={() => setActiveTab('seat_booking')}
-          className={`py-2.5 rounded-xl transition-all ${activeTab === 'seat_booking' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-white/60 hover:text-white'}`}
+          className={`py-2 rounded-xl transition-all ${activeTab === 'seat_booking' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-white/60 hover:text-white'}`}
         >
           Seat Book
         </button>
         <button 
+          onClick={() => setActiveTab('sure_shot')}
+          className={`py-2 rounded-xl transition-all ${activeTab === 'sure_shot' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'text-white/60 hover:text-white'}`}
+        >
+          Sure Shot
+        </button>
+        <button 
           onClick={() => setActiveTab('withdraw')}
-          className={`py-2.5 rounded-xl transition-all ${activeTab === 'withdraw' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' : 'text-white/60 hover:text-white'}`}
+          className={`py-2 rounded-xl transition-all ${activeTab === 'withdraw' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' : 'text-white/60 hover:text-white'}`}
         >
           Withdraw
         </button>
         <button 
           onClick={() => setActiveTab('members')}
-          className={`py-2.5 rounded-xl transition-all ${activeTab === 'members' ? 'bg-white/10 text-white shadow-sm' : 'text-white/60 hover:text-white'}`}
+          className={`py-2 rounded-xl transition-all ${activeTab === 'members' ? 'bg-white/10 text-white shadow-sm' : 'text-white/60 hover:text-white'}`}
         >
           Members
         </button>
         <button 
           onClick={() => setActiveTab('settings')}
-          className={`py-2.5 rounded-xl transition-all ${activeTab === 'settings' ? 'bg-white/10 text-white shadow-sm' : 'text-white/60 hover:text-white'}`}
+          className={`py-2 rounded-xl transition-all ${activeTab === 'settings' ? 'bg-white/10 text-white shadow-sm' : 'text-white/60 hover:text-white'}`}
         >
           Settings
         </button>
@@ -1819,6 +2575,7 @@ function AdminDashboard({
 
       <div className="flex-1">
         {activeTab === 'seat_booking' && <AdminRequestsView requestType="seat_booking" />}
+        {activeTab === 'sure_shot' && <AdminSureShotView />}
         {activeTab === 'withdraw' && <AdminRequestsView requestType="withdraw" />}
 
         {activeTab === 'members' && (
@@ -1920,6 +2677,208 @@ function AdminDashboard({
         )}
       </AnimatePresence>
     </motion.div>
+  );
+}
+
+// --- Admin Sure Shot Pre-Booking Management View ---
+
+function AdminSureShotView() {
+  const [requests, setRequests] = useState<RequestData[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'confirmed' | 'rejected'>('pending');
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const q = query(collection(db, 'requests'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(
+      q, 
+      (snapshot) => {
+        const all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RequestData));
+        setRequests(all.filter(r => r.type === 'sure_shot'));
+      },
+      (error) => handleFirestoreError(error, OperationType.LIST, 'requests')
+    );
+    return () => unsubscribe();
+  }, []);
+
+  // Auto-delete requests older than 6 hours
+  useEffect(() => {
+    const autoPurge = async () => {
+      const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+      const now = Date.now();
+      for (const req of requests) {
+        const createdMs = getTimestampMs(req.createdAt);
+        if (now - createdMs >= SIX_HOURS_MS) {
+          try {
+            await deleteDoc(doc(db, 'requests', req.id));
+          } catch (e) {
+            console.error('Failed to purge expired sure shot:', e);
+          }
+        }
+      }
+    };
+    autoPurge();
+    const interval = setInterval(autoPurge, 15000);
+    return () => clearInterval(interval);
+  }, [requests]);
+
+  const handleUpdateStatus = async (id: string, newStatus: 'confirmed' | 'rejected') => {
+    if (loadingId) return;
+    setLoadingId(id);
+    try {
+      await updateDoc(doc(db, 'requests', id), {
+        status: newStatus,
+        updatedAt: serverTimestamp()
+      });
+    } catch (err: any) {
+      console.error(err);
+      alert('Error updating status: ' + err.message);
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  const handleDeleteRequest = async (id: string) => {
+    if (!window.confirm(TRANSLATIONS.CONFIRM_DELETE)) return;
+    try {
+      await deleteDoc(doc(db, 'requests', id));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Filter by Date if selected
+  const dateFiltered = selectedDate 
+    ? requests.filter(req => {
+        if (!req.createdAt?.toDate) return false;
+        const reqDate = req.createdAt.toDate().toISOString().split('T')[0];
+        return reqDate === selectedDate;
+      })
+    : requests;
+
+  // Filter by Status (pending / confirmed / rejected)
+  const finalFiltered = dateFiltered.filter(r => r.status === statusFilter);
+
+  return (
+    <div className="space-y-4">
+      {/* Date Picker Bar */}
+      <div className="bg-[#18181b] p-3 rounded-2xl border border-white/5 space-y-2">
+        <div className="flex items-center justify-between text-xs font-bold text-white/70">
+          <span className="flex items-center gap-1.5 text-amber-400">
+            <Calendar size={16} /> Filter by Date (তারিখ অনুযায়ী ফিল্টার)
+          </span>
+          {selectedDate && (
+            <button 
+              onClick={() => setSelectedDate('')}
+              className="text-[10px] text-white/40 hover:text-white underline shrink-0"
+            >
+              All Dates
+            </button>
+          )}
+        </div>
+        <input 
+          type="date" 
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+          className="w-full bg-[#09090b] border border-white/10 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-amber-500/50"
+        />
+      </div>
+
+      {/* Status Filters: Pending, Confirmed, Rejected */}
+      <div className="flex bg-[#18181b] p-1 rounded-2xl border border-white/5 text-[11px] font-bold">
+        {(['pending', 'confirmed', 'rejected'] as const).map(st => (
+          <button 
+            key={st}
+            onClick={() => setStatusFilter(st)}
+            className={`flex-1 py-2 rounded-xl capitalize transition-all ${
+              statusFilter === st 
+                ? 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-300 border border-amber-500/40 shadow-sm font-black' 
+                : 'text-white/40 hover:text-white'
+            }`}
+          >
+            {st === 'pending' ? 'পেন্ডিং (Pending)' : st === 'confirmed' ? 'কনফার্ম (Confirmed)' : 'রিজেক্ট (Rejected)'} ({dateFiltered.filter(r => r.status === st).length})
+          </button>
+        ))}
+      </div>
+
+      {/* Requests List */}
+      <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1 custom-scrollbar">
+        {finalFiltered.map(req => (
+          <div key={req.id} className="bg-[#18181b] p-3 rounded-2xl border border-white/10 hover:border-amber-500/30 transition-all space-y-2.5 shadow-sm">
+            {/* Top Row: Member & Booking Info + Timer */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/25">
+                  <Zap size={16} />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h4 className="font-bold text-white text-xs truncate">{req.recipientName}</h4>
+                    <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      #{req.bookingSequence || 1}
+                    </span>
+                    <Badge status={req.status} />
+                  </div>
+                  <p className="text-[10px] text-white/40 font-mono">
+                    {req.refId} • {req.createdAt?.toDate ? req.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Live Timer with Red (Lock) & Green (Active) indicator */}
+              <div className="shrink-0">
+                <CountdownTimer createdAt={req.createdAt} expiresAt={req.expiresAt} variant="admin" />
+              </div>
+            </div>
+
+            {/* Actions Row */}
+            <div className="flex items-center justify-end gap-1.5 pt-1.5 border-t border-white/5">
+              {req.status === 'pending' && (
+                <>
+                  <button
+                    onClick={() => handleUpdateStatus(req.id, 'confirmed')}
+                    disabled={loadingId === req.id}
+                    className="px-3 py-1.5 bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1 shadow-sm"
+                  >
+                    <CheckCircle2 size={13} /> Confirm
+                  </button>
+                  <button
+                    onClick={() => handleUpdateStatus(req.id, 'rejected')}
+                    disabled={loadingId === req.id}
+                    className="px-2.5 py-1.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1"
+                  >
+                    <XCircle size={13} /> Reject
+                  </button>
+                </>
+              )}
+              {req.status === 'confirmed' && (
+                <button
+                  onClick={() => handleUpdateStatus(req.id, 'rejected')}
+                  disabled={loadingId === req.id}
+                  className="px-2.5 py-1.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1"
+                >
+                  <XCircle size={13} /> Reject
+                </button>
+              )}
+              <button
+                onClick={() => handleDeleteRequest(req.id)}
+                className="p-1.5 text-white/30 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors ml-auto"
+                title="Delete"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {finalFiltered.length === 0 && (
+          <div className="text-center py-16 text-white/20 text-xs space-y-1">
+            <Zap size={32} className="mx-auto mb-1 opacity-20" />
+            <p>কোন শিউরশট প্রি-বুকিং পাওয়া যায়নি (No Sure Shot Bookings Found)</p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
