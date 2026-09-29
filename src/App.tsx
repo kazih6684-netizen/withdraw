@@ -2239,72 +2239,90 @@ function HistoryModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md overflow-hidden p-0 sm:p-4 md:p-6">
       <motion.div 
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         onClick={onClose}
-        className="fixed inset-0 bg-black/85 backdrop-blur-md" 
+        className="fixed inset-0 bg-black/80 backdrop-blur-md" 
       />
       <motion.div 
-        initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-        className="relative w-full max-w-sm h-[85vh] bg-[#0c0f17] rounded-3xl p-5 border border-white/10 shadow-2xl flex flex-col z-10 my-auto overflow-hidden"
+        initial={{ opacity: 0, scale: 0.98 }} 
+        animate={{ opacity: 1, scale: 1 }} 
+        exit={{ opacity: 0, scale: 0.98 }}
+        transition={{ duration: 0.2 }}
+        className="relative w-full h-full sm:h-[92vh] sm:max-w-2xl lg:max-w-3xl bg-[#0a0d16] sm:rounded-3xl border-0 sm:border sm:border-white/10 shadow-2xl flex flex-col z-10 overflow-hidden"
       >
         {/* Top Glow Accent Bar */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-500 via-amber-500 to-purple-500" />
+        <div className="h-1 w-full bg-gradient-to-r from-cyan-500 via-amber-500 to-purple-500 shrink-0" />
 
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-white/10 pt-1">
-          <div>
-            <h2 className="text-base font-black text-white flex items-center gap-2">
-              <HistoryIcon className="text-cyan-400" size={20} />
-              অনুরোধের ইতিহাস
-            </h2>
-            <p className="text-[10px] text-white/50 font-medium">My Request History & Statements</p>
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-white/10 bg-[#0c101c]/80 backdrop-blur-sm shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 flex items-center justify-center text-cyan-400 shrink-0 shadow-inner">
+              <HistoryIcon size={22} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
+                  অনুরোধের ইতিহাস
+                </h2>
+                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                  {userFiltered.length} Records
+                </span>
+              </div>
+              <p className="text-xs text-white/50 font-medium">My Request History & Statements</p>
+            </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/10 text-white/50 hover:text-white rounded-xl transition-colors">
+          <button 
+            onClick={onClose} 
+            className="p-2 sm:p-2.5 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white rounded-xl transition-all border border-white/5 hover:border-white/10 active:scale-95"
+            title="Close"
+          >
             <XCircle size={22} />
           </button>
         </div>
 
         {/* Section Segment Tabs: 3 Tabs (Seat, Sure Shot, Withdraw) */}
-        <div className="grid grid-cols-3 bg-[#121622] p-1 rounded-2xl border border-white/10 my-3 gap-1">
-          <button 
-            onClick={() => setSubTab('seat_booking')}
-            className={`py-2 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1 ${
-              subTab === 'seat_booking' 
-                ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm' 
-                : 'text-white/40 hover:text-white'
-            }`}
-          >
-            <Sparkles size={12} />
-            Seat ({seatBookings.length})
-          </button>
-          <button 
-            onClick={() => setSubTab('sure_shot')}
-            className={`py-2 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1 ${
-              subTab === 'sure_shot' 
-                ? 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-300 border border-amber-500/40 shadow-sm' 
-                : 'text-white/40 hover:text-white'
-            }`}
-          >
-            <Zap size={12} />
-            Sure Shot ({sureShotBookings.length})
-          </button>
-          <button 
-            onClick={() => setSubTab('withdraw')}
-            className={`py-2 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1 ${
-              subTab === 'withdraw' 
-                ? 'bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm' 
-                : 'text-white/40 hover:text-white'
-            }`}
-          >
-            <Banknote size={12} />
-            Withdraw ({withdraws.length})
-          </button>
+        <div className="px-4 sm:px-6 pt-3 pb-2 shrink-0">
+          <div className="grid grid-cols-3 bg-[#121624] p-1.5 rounded-2xl border border-white/10 gap-1.5 shadow-inner">
+            <button 
+              onClick={() => setSubTab('seat_booking')}
+              className={`py-2.5 px-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5 ${
+                subTab === 'seat_booking' 
+                  ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm' 
+                  : 'text-white/40 hover:text-white/80'
+              }`}
+            >
+              <Sparkles size={14} className="shrink-0" />
+              <span>Seat ({seatBookings.length})</span>
+            </button>
+            <button 
+              onClick={() => setSubTab('sure_shot')}
+              className={`py-2.5 px-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5 ${
+                subTab === 'sure_shot' 
+                  ? 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-300 border border-amber-500/40 shadow-sm' 
+                  : 'text-white/40 hover:text-white/80'
+              }`}
+            >
+              <Zap size={14} className="shrink-0" />
+              <span>Sure Shot ({sureShotBookings.length})</span>
+            </button>
+            <button 
+              onClick={() => setSubTab('withdraw')}
+              className={`py-2.5 px-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5 ${
+                subTab === 'withdraw' 
+                  ? 'bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm' 
+                  : 'text-white/40 hover:text-white/80'
+              }`}
+            >
+              <Banknote size={14} className="shrink-0" />
+              <span>Withdraw ({withdraws.length})</span>
+            </button>
+          </div>
         </div>
 
         {/* History Item List */}
-        <div className="flex-1 overflow-y-auto space-y-3.5 pr-1 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-2 space-y-4 custom-scrollbar">
           {filteredHistory.map(req => {
             const formattedDate = req.createdAt?.toDate 
               ? req.createdAt.toDate().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -2313,14 +2331,14 @@ function HistoryModal({
             // Custom Card for Sure Shot Pre-Booking
             if (req.type === 'sure_shot') {
               return (
-                <div key={req.id} className="bg-[#121622] p-4 rounded-2xl border border-amber-500/20 space-y-3 shadow-md hover:border-amber-500/40 transition-all">
+                <div key={req.id} className="bg-[#121626]/90 p-4 sm:p-5 rounded-2xl border border-amber-500/20 space-y-3.5 shadow-lg hover:border-amber-500/40 transition-all">
                   {/* Top Badge Row */}
-                  <div className="flex items-center justify-between pb-2 border-b border-white/5 flex-wrap gap-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[9px] font-black uppercase text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-md border border-amber-500/30 flex items-center gap-1">
-                        <Zap size={10} /> Sure Shot Pre-Booking
+                  <div className="flex items-center justify-between pb-2.5 border-b border-white/5 flex-wrap gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] font-black uppercase text-amber-400 bg-amber-500/15 px-2.5 py-1 rounded-lg border border-amber-500/30 flex items-center gap-1.5">
+                        <Zap size={12} /> Sure Shot Pre-Booking
                       </span>
-                      <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-white/10 text-white border border-white/10">
+                      <span className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-white/10 text-white border border-white/10">
                         বুকিং #{req.bookingSequence || 1}
                       </span>
                     </div>
@@ -2328,32 +2346,35 @@ function HistoryModal({
                   </div>
 
                   {/* 6-Hour Live Reverse Countdown Timer */}
-                  <div className="flex items-center justify-between bg-[#0a0d14] p-2.5 rounded-xl border border-amber-500/20">
-                    <span className="text-[10px] uppercase font-bold text-amber-300/80">পেমেন্ট বাকি সময়:</span>
+                  <div className="flex items-center justify-between bg-[#080b13] p-3 rounded-xl border border-amber-500/25 shadow-inner">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
+                      <Clock size={14} className="text-amber-400" />
+                      <span>পেমেন্ট বাকি সময়:</span>
+                    </div>
                     <CountdownTimer createdAt={req.createdAt} expiresAt={req.expiresAt} variant="compact" />
                   </div>
 
-                  {/* Main Info Box */}
-                  <div className="flex justify-between items-start gap-2">
-                    <div className="space-y-1 min-w-0">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">
-                        TRAINER / LEADER (কাউন্সেলর / ট্রেইনার)
-                      </p>
-                      <h3 className="font-extrabold text-white text-sm truncate">{req.recipientName || 'N/A'}</h3>
+                  {/* Main Info Box - Clean, Spacious, No designation clutter */}
+                  <div className="flex justify-between items-start gap-4">
+                    <div className="space-y-1.5 min-w-0">
+                      <h3 className="font-extrabold text-white text-base sm:text-lg truncate">
+                        {req.senderName || req.recipientName || 'Sure Shot Applicant'}
+                      </h3>
                       
-                      {req.senderName && (
-                        <p className="text-xs text-white/70">
-                          Candidate: <strong className="text-amber-300">{req.senderName}</strong>
+                      {req.senderName && req.recipientName && req.senderName !== req.recipientName && (
+                        <p className="text-xs text-white/60">
+                          Assigned: <span className="text-white/90 font-semibold">{req.recipientName}</span>
                         </p>
                       )}
-                      <p className="text-[10px] text-white/40 font-mono flex items-center gap-1">
-                        <Clock size={11} className="text-white/30" /> {formattedDate}
+                      
+                      <p className="text-xs text-white/40 font-mono flex items-center gap-1.5 pt-0.5">
+                        <Clock size={12} className="text-white/30" /> {formattedDate}
                       </p>
                     </div>
 
                     <div className="text-right shrink-0">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">BOOKING ID</p>
-                      <p className="font-mono font-black text-xs text-amber-400">{req.refId}</p>
+                      <p className="font-mono font-black text-sm sm:text-base text-amber-400">{req.refId}</p>
                     </div>
                   </div>
 
@@ -2361,25 +2382,106 @@ function HistoryModal({
                   {onSelectSureShotInvoice && (
                     <button
                       onClick={() => onSelectSureShotInvoice(req)}
-                      className="w-full py-2.5 bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 hover:from-amber-500/25 hover:to-orange-500/25 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-98 shadow-sm"
+                      className="w-full py-3 bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 hover:from-amber-500/25 hover:to-orange-500/25 text-amber-300 border border-amber-500/30 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 active:scale-98 shadow-sm"
                     >
-                      <FileText size={15} /> View & Download Invoice (ইনভয়েস দেখুন ও ডাউনলোড)
+                      <FileText size={16} /> View & Download Invoice (ইনভয়েস দেখুন ও ডাউনলোড)
                     </button>
                   )}
                 </div>
               );
             }
 
+            // Custom Card for Seat Booking
+            if (req.type === 'seat_booking') {
+              return (
+                <div key={req.id} className="bg-[#121626]/90 p-4 sm:p-5 rounded-2xl border border-cyan-500/20 space-y-3.5 shadow-lg hover:border-cyan-500/40 transition-all">
+                  {/* Top Badge Row */}
+                  <div className="flex items-center justify-between pb-2.5 border-b border-white/5 flex-wrap gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] font-black uppercase text-cyan-400 bg-cyan-500/15 px-2.5 py-1 rounded-lg border border-cyan-500/30 flex items-center gap-1.5">
+                        <Sparkles size={12} /> Seat Booking
+                      </span>
+                      {req.paymentMethod && (
+                        <span className={`text-[11px] font-black px-2.5 py-1 rounded-lg border ${getPaymentBrandStyle(req.paymentMethod)}`}>
+                          {req.paymentMethod}
+                        </span>
+                      )}
+                    </div>
+                    <Badge status={req.status || 'pending'} />
+                  </div>
+
+                  {/* Main Info Box */}
+                  <div className="flex justify-between items-start gap-4">
+                    <div className="space-y-1.5 min-w-0">
+                      <h3 className="font-extrabold text-white text-base sm:text-lg truncate">
+                        {req.senderName || req.recipientName || 'Seat Applicant'}
+                      </h3>
+                      
+                      {req.senderName && req.recipientName && req.senderName !== req.recipientName && (
+                        <p className="text-xs text-white/60">
+                          Assigned: <span className="text-white/90 font-semibold">{req.recipientName}</span>
+                        </p>
+                      )}
+                      
+                      <p className="text-xs text-white/40 font-mono flex items-center gap-1.5 pt-0.5">
+                        <Clock size={12} className="text-white/30" /> {formattedDate}
+                      </p>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">FEE / AMOUNT</p>
+                      <p className="font-mono font-black text-lg sm:text-xl text-emerald-400">৳{req.amount}</p>
+                    </div>
+                  </div>
+
+                  {/* Trx & Contact Details Box */}
+                  {(req.trxDigit || req.whatsappNumber || req.senderNumber) && (
+                    <div className="bg-[#080b13] p-3 rounded-xl text-xs text-white/80 font-mono border border-white/5 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {req.trxDigit && (
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-white/50">Trx ID / Digit:</span>
+                          <strong className="text-cyan-300 tracking-wider">{req.trxDigit}</strong>
+                        </div>
+                      )}
+                      {(req.whatsappNumber || req.senderNumber) && (
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-white/50">WhatsApp / Phone:</span>
+                          <strong className="text-emerald-300">{req.whatsappNumber || req.senderNumber}</strong>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {req.note && (
+                    <p className="text-xs text-white/70 italic bg-[#080b13] p-3 rounded-xl border border-white/5">
+                      "{req.note}"
+                    </p>
+                  )}
+
+                  {/* Receipt Trigger Button */}
+                  {onSelectInvoice && (
+                    <button
+                      onClick={() => onSelectInvoice(req)}
+                      className="w-full py-3 bg-gradient-to-r from-cyan-500/15 to-blue-500/15 hover:from-cyan-500/25 hover:to-blue-500/25 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 active:scale-98 shadow-sm"
+                    >
+                      <FileText size={16} /> View & Download Invoice Receipt (ইনভয়েস দেখুন)
+                    </button>
+                  )}
+                </div>
+              );
+            }
+
+            // Custom Card for Withdrawal
             return (
-              <div key={req.id} className="bg-[#121622] p-4 rounded-2xl border border-white/10 space-y-3 shadow-md hover:border-white/20 transition-all">
+              <div key={req.id} className="bg-[#121626]/90 p-4 sm:p-5 rounded-2xl border border-indigo-500/20 space-y-3.5 shadow-lg hover:border-indigo-500/40 transition-all">
                 {/* Top Badge Row */}
-                <div className="flex items-center justify-between pb-2 border-b border-white/5">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[9px] font-black uppercase text-white/50 bg-white/5 px-2 py-0.5 rounded-md border border-white/5">
-                      {req.type === 'seat_booking' ? 'Seat Book' : 'Withdrawal'}
+                <div className="flex items-center justify-between pb-2.5 border-b border-white/5 flex-wrap gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-black uppercase text-indigo-300 bg-indigo-500/15 px-2.5 py-1 rounded-lg border border-indigo-500/30 flex items-center gap-1.5">
+                      <Banknote size={12} /> Withdrawal Request
                     </span>
                     {req.paymentMethod && (
-                      <span className={`text-[9px] font-black px-2 py-0.5 rounded-md border ${getPaymentBrandStyle(req.paymentMethod)}`}>
+                      <span className={`text-[11px] font-black px-2.5 py-1 rounded-lg border ${getPaymentBrandStyle(req.paymentMethod)}`}>
                         {req.paymentMethod}
                       </span>
                     )}
@@ -2388,41 +2490,34 @@ function HistoryModal({
                 </div>
 
                 {/* Main Info Box */}
-                <div className="flex justify-between items-start gap-2">
-                  <div className="space-y-1 min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">
-                      COUNSELOR / LEADER (কাউন্সেলর)
-                    </p>
-                    <h3 className="font-extrabold text-white text-sm truncate">{req.recipientName || 'N/A'}</h3>
-                    
-                    {req.senderName && (
-                      <p className="text-xs text-white/70">
-                        Candidate: <strong className="text-cyan-300">{req.senderName}</strong>
-                      </p>
-                    )}
-                    <p className="text-[10px] text-white/40 font-mono flex items-center gap-1">
-                      <Clock size={11} className="text-white/30" /> {formattedDate}
+                <div className="flex justify-between items-start gap-4">
+                  <div className="space-y-1.5 min-w-0">
+                    <h3 className="font-extrabold text-white text-base sm:text-lg truncate">
+                      {req.senderName || req.recipientName || 'Withdrawal'}
+                    </h3>
+                    <p className="text-xs text-white/40 font-mono flex items-center gap-1.5 pt-0.5">
+                      <Clock size={12} className="text-white/30" /> {formattedDate}
                     </p>
                   </div>
 
                   <div className="text-right shrink-0">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">FEE / AMOUNT</p>
-                    <p className="font-mono font-black text-base text-emerald-400">৳{req.amount}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">WITHDRAW AMOUNT</p>
+                    <p className="font-mono font-black text-lg sm:text-xl text-emerald-400">৳{req.amount}</p>
                   </div>
                 </div>
 
                 {/* Trx & Contact Details Box */}
                 {(req.trxDigit || req.whatsappNumber || req.senderNumber) && (
-                  <div className="bg-[#0a0d14] p-2.5 rounded-xl text-xs text-white/80 font-mono border border-white/5 grid grid-cols-1 gap-1">
+                  <div className="bg-[#080b13] p-3 rounded-xl text-xs text-white/80 font-mono border border-white/5 grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {req.trxDigit && (
-                      <div className="flex justify-between items-center text-[11px]">
-                        <span className="text-white/50">Trx ID / Digit:</span>
-                        <strong className="text-cyan-300 tracking-wider">{req.trxDigit}</strong>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-white/50">Trx / Account:</span>
+                        <strong className="text-indigo-300 tracking-wider">{req.trxDigit}</strong>
                       </div>
                     )}
                     {(req.whatsappNumber || req.senderNumber) && (
-                      <div className="flex justify-between items-center text-[11px]">
-                        <span className="text-white/50">WhatsApp / Phone:</span>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-white/50">Phone / Number:</span>
                         <strong className="text-emerald-300">{req.whatsappNumber || req.senderNumber}</strong>
                       </div>
                     )}
@@ -2430,43 +2525,35 @@ function HistoryModal({
                 )}
 
                 {req.note && (
-                  <p className="text-xs text-white/70 italic bg-[#0a0d14] p-2.5 rounded-xl border border-white/5">
+                  <p className="text-xs text-white/70 italic bg-[#080b13] p-3 rounded-xl border border-white/5">
                     "{req.note}"
                   </p>
-                )}
-
-                {/* Receipt Trigger Button */}
-                {req.type === 'seat_booking' && onSelectInvoice && (
-                  <button
-                    onClick={() => onSelectInvoice(req)}
-                    className="w-full py-2.5 bg-gradient-to-r from-cyan-500/15 to-blue-500/15 hover:from-cyan-500/25 hover:to-blue-500/25 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-98 shadow-sm"
-                  >
-                    <FileText size={15} /> View & Download Invoice Receipt (ইনভয়েস দেখুন)
-                  </button>
                 )}
               </div>
             );
           })}
 
           {filteredHistory.length === 0 && (
-            <div className="text-center py-16 text-white/30 text-xs space-y-2">
-              <HistoryIcon size={40} className="mx-auto text-white/20" />
-              <p className="font-bold text-white/40">কোন রেকর্ড পাওয়া যায়নি (No Records Found)</p>
-              <p className="text-[11px] text-white/30">
-                Your {subTab === 'seat_booking' ? 'seat booking' : subTab === 'sure_shot' ? 'sure shot pre-booking' : 'withdraw'} requests will appear here
+            <div className="text-center py-20 text-white/30 text-xs space-y-3">
+              <div className="w-16 h-16 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto text-white/20">
+                <HistoryIcon size={36} />
+              </div>
+              <p className="font-extrabold text-sm text-white/50">কোন রেকর্ড পাওয়া যায়নি (No Records Found)</p>
+              <p className="text-xs text-white/30 max-w-xs mx-auto">
+                Your {subTab === 'seat_booking' ? 'seat booking' : subTab === 'sure_shot' ? 'sure shot pre-booking' : 'withdrawal'} requests will appear here
               </p>
             </div>
           )}
         </div>
 
         {/* Bottom Close Button */}
-        <div className="pt-3 border-t border-white/10 mt-auto">
+        <div className="p-4 sm:px-6 border-t border-white/10 bg-[#0c101c]/80 backdrop-blur-sm mt-auto shrink-0">
           <button 
             type="button"
             onClick={onClose}
-            className="w-full py-3 bg-[#121622] hover:bg-[#1a1f30] text-white font-extrabold text-xs rounded-2xl border border-white/10 transition-colors flex items-center justify-center gap-2"
+            className="w-full py-3.5 bg-gradient-to-r from-white/10 to-white/5 hover:from-white/15 hover:to-white/10 active:scale-98 text-white font-black text-sm rounded-2xl border border-white/10 hover:border-white/20 transition-all flex items-center justify-center gap-2 shadow-lg"
           >
-            <XCircle size={16} className="text-white/50" /> CLOSE (বন্ধ করুন)
+            <XCircle size={18} className="text-white/60" /> CLOSE (বন্ধ করুন)
           </button>
         </div>
       </motion.div>
@@ -2802,74 +2889,131 @@ function AdminSureShotView() {
       </div>
 
       {/* Requests List */}
-      <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1 custom-scrollbar">
-        {finalFiltered.map(req => (
-          <div key={req.id} className="bg-[#18181b] p-3 rounded-2xl border border-white/10 hover:border-amber-500/30 transition-all space-y-2.5 shadow-sm">
-            {/* Top Row: Member & Booking Info + Timer */}
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/25">
-                  <Zap size={16} />
+      <div className="space-y-3.5 max-h-[55vh] overflow-y-auto pr-1 custom-scrollbar">
+        {finalFiltered.map(req => {
+          const dateObj = req.createdAt?.toDate ? req.createdAt.toDate() : null;
+          const formattedDate = dateObj 
+            ? dateObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) 
+            : 'Today';
+          const formattedTime = dateObj 
+            ? dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) 
+            : '';
+          const candidateName = req.senderName || req.recipientName || 'Sure Shot Applicant';
+          const assignedLeader = req.senderName && req.recipientName && req.senderName !== req.recipientName ? req.recipientName : null;
+
+          return (
+            <div key={req.id} className="bg-[#18181f] p-4 rounded-2xl border border-white/10 hover:border-amber-500/40 transition-all space-y-3 shadow-md">
+              {/* Top Row: Sequence, ID, Status & Timer */}
+              <div className="flex items-center justify-between gap-2 flex-wrap border-b border-white/5 pb-2.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-black uppercase text-amber-400 bg-amber-500/15 px-2.5 py-1 rounded-lg border border-amber-500/30 flex items-center gap-1">
+                    <Zap size={11} className="text-amber-400" />
+                    <span>#{req.bookingSequence || 1}</span>
+                  </span>
+                  <span className="text-[10px] font-black font-mono px-2 py-0.5 rounded-lg bg-white/5 text-white/80 border border-white/10">
+                    {req.refId}
+                  </span>
+                  <Badge status={req.status} />
                 </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <h4 className="font-bold text-white text-xs truncate">{req.recipientName}</h4>
-                    <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                      #{req.bookingSequence || 1}
-                    </span>
-                    <Badge status={req.status} />
-                  </div>
-                  <p className="text-[10px] text-white/40 font-mono">
-                    {req.refId} • {req.createdAt?.toDate ? req.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now'}
+
+                {/* Live Timer */}
+                <div className="shrink-0">
+                  <CountdownTimer createdAt={req.createdAt} expiresAt={req.expiresAt} variant="admin" />
+                </div>
+              </div>
+
+              {/* Main Candidate & Booking Info */}
+              <div className="space-y-1.5">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400/70">Candidate Name (প্রার্থী)</p>
+                  <h4 className="font-black text-white text-base leading-snug break-words">
+                    {candidateName}
+                  </h4>
+                </div>
+
+                {assignedLeader && (
+                  <p className="text-xs text-white/60">
+                    Leader / Assigned: <span className="text-white/90 font-semibold">{assignedLeader}</span>
                   </p>
+                )}
+
+                {(req.whatsappNumber || req.senderNumber) && (
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-mono">
+                    <Smartphone size={13} className="text-emerald-400 shrink-0" />
+                    <span>{req.whatsappNumber || req.senderNumber}</span>
+                  </div>
+                )}
+
+                {/* Full Date & Time with Icons */}
+                <div className="flex items-center gap-2 text-xs text-white/50 pt-1 font-mono flex-wrap">
+                  <span className="flex items-center gap-1 text-white/70">
+                    <Calendar size={13} className="text-amber-400 shrink-0" />
+                    <span>{formattedDate}</span>
+                  </span>
+                  {formattedTime && (
+                    <>
+                      <span className="text-white/30">•</span>
+                      <span className="flex items-center gap-1 text-white/70">
+                        <Clock size={13} className="text-cyan-400 shrink-0" />
+                        <span>{formattedTime}</span>
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 
-              {/* Live Timer with Red (Lock) & Green (Active) indicator */}
-              <div className="shrink-0">
-                <CountdownTimer createdAt={req.createdAt} expiresAt={req.expiresAt} variant="admin" />
+              {/* Actions Row */}
+              <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-white/5">
+                <div className="flex items-center gap-2">
+                  {req.status === 'pending' && (
+                    <>
+                      <button
+                        onClick={() => handleUpdateStatus(req.id, 'confirmed')}
+                        disabled={loadingId === req.id}
+                        className="px-3.5 py-1.5 bg-emerald-600/25 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600 hover:text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                      >
+                        <CheckCircle2 size={14} /> Confirm
+                      </button>
+                      <button
+                        onClick={() => handleUpdateStatus(req.id, 'rejected')}
+                        disabled={loadingId === req.id}
+                        className="px-3 py-1.5 bg-rose-500/15 text-rose-300 border border-rose-500/30 hover:bg-rose-500 hover:text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 active:scale-95"
+                      >
+                        <XCircle size={14} /> Reject
+                      </button>
+                    </>
+                  )}
+                  {req.status === 'confirmed' && (
+                    <button
+                      onClick={() => handleUpdateStatus(req.id, 'rejected')}
+                      disabled={loadingId === req.id}
+                      className="px-3 py-1.5 bg-rose-500/15 text-rose-300 border border-rose-500/30 hover:bg-rose-500 hover:text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 active:scale-95"
+                    >
+                      <XCircle size={14} /> Reject
+                    </button>
+                  )}
+                  {req.status === 'rejected' && (
+                    <button
+                      onClick={() => handleUpdateStatus(req.id, 'confirmed')}
+                      disabled={loadingId === req.id}
+                      className="px-3 py-1.5 bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600 hover:text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 active:scale-95"
+                    >
+                      <CheckCircle2 size={14} /> Re-Confirm
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => handleDeleteRequest(req.id)}
+                  className="p-2 text-white/30 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-all"
+                  title="Delete Request"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
             </div>
-
-            {/* Actions Row */}
-            <div className="flex items-center justify-end gap-1.5 pt-1.5 border-t border-white/5">
-              {req.status === 'pending' && (
-                <>
-                  <button
-                    onClick={() => handleUpdateStatus(req.id, 'confirmed')}
-                    disabled={loadingId === req.id}
-                    className="px-3 py-1.5 bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1 shadow-sm"
-                  >
-                    <CheckCircle2 size={13} /> Confirm
-                  </button>
-                  <button
-                    onClick={() => handleUpdateStatus(req.id, 'rejected')}
-                    disabled={loadingId === req.id}
-                    className="px-2.5 py-1.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1"
-                  >
-                    <XCircle size={13} /> Reject
-                  </button>
-                </>
-              )}
-              {req.status === 'confirmed' && (
-                <button
-                  onClick={() => handleUpdateStatus(req.id, 'rejected')}
-                  disabled={loadingId === req.id}
-                  className="px-2.5 py-1.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1"
-                >
-                  <XCircle size={13} /> Reject
-                </button>
-              )}
-              <button
-                onClick={() => handleDeleteRequest(req.id)}
-                className="p-1.5 text-white/30 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors ml-auto"
-                title="Delete"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
 
         {finalFiltered.length === 0 && (
           <div className="text-center py-16 text-white/20 text-xs space-y-1">
@@ -2998,83 +3142,151 @@ function AdminRequestsView({ requestType }: { requestType: 'seat_booking' | 'wit
       </div>
 
       {/* Requests List */}
-      <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1 custom-scrollbar">
-        {finalFiltered.map(req => (
-          <div key={req.id} className="bg-[#18181b] p-4 rounded-2xl border border-white/5 space-y-3 shadow-sm">
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[9px] uppercase font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20">
-                    {req.type === 'seat_booking' ? 'Seat Booking' : 'Withdraw'}
+      <div className="space-y-3.5 max-h-[55vh] overflow-y-auto pr-1 custom-scrollbar">
+        {finalFiltered.map(req => {
+          const dateObj = req.createdAt?.toDate ? req.createdAt.toDate() : null;
+          const formattedDate = dateObj 
+            ? dateObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) 
+            : 'Today';
+          const formattedTime = dateObj 
+            ? dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) 
+            : '';
+          const candidateName = req.senderName || req.recipientName || 'Applicant';
+          const assignedRecipient = req.senderName && req.recipientName && req.senderName !== req.recipientName ? req.recipientName : null;
+
+          return (
+            <div key={req.id} className="bg-[#18181f] p-4 rounded-2xl border border-white/10 hover:border-cyan-500/30 transition-all space-y-3 shadow-md">
+              {/* Top Row: Type, Payment Brand & Status */}
+              <div className="flex items-center justify-between gap-2 flex-wrap border-b border-white/5 pb-2.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] uppercase font-black text-cyan-400 bg-cyan-500/15 px-2.5 py-1 rounded-lg border border-cyan-500/30">
+                    {req.type === 'seat_booking' ? 'Seat Booking' : 'Withdrawal'}
                   </span>
                   {req.paymentMethod && (
-                    <span className="text-[9px] font-bold text-indigo-300 bg-indigo-500/10 px-2 py-0.5 rounded-full">
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-lg border border-white/10 bg-white/5 text-white/90">
                       {req.paymentMethod}
                     </span>
                   )}
+                  {req.refId && (
+                    <span className="text-[10px] font-mono text-white/50 bg-black/30 px-2 py-0.5 rounded-md border border-white/5">
+                      {req.refId}
+                    </span>
+                  )}
                 </div>
-                <h4 className="font-bold text-white text-sm">{req.recipientName}</h4>
-                <p className="text-xs text-white/50">From: <strong>{req.senderName}</strong> ({req.senderNumber})</p>
-                <p className="text-[10px] text-white/40">
-                  {req.createdAt?.toDate ? req.createdAt.toDate().toLocaleString() : 'Just now'}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="font-mono font-bold text-base text-white">৳{req.amount}</p>
-                <div className="mt-1">
+
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-black text-base text-emerald-400">৳{req.amount}</span>
                   <Badge status={req.status} />
                 </div>
               </div>
-            </div>
 
-            {/* Trx Digit & WhatsApp info */}
-            {req.trxDigit && (
-              <div className="bg-[#09090b] p-2.5 rounded-xl text-xs text-white/70 font-mono border border-white/5 flex flex-wrap gap-3 justify-between">
-                <span>Trx Digit: <strong className="text-cyan-300">{req.trxDigit}</strong></span>
-                {req.whatsappNumber && <span>WhatsApp: <strong>{req.whatsappNumber}</strong></span>}
+              {/* Candidate & Contact Details */}
+              <div className="space-y-1.5">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-400/70">Candidate Name (প্রার্থী)</p>
+                  <h4 className="font-black text-white text-base leading-snug break-words">
+                    {candidateName}
+                  </h4>
+                </div>
+
+                {assignedRecipient && (
+                  <p className="text-xs text-white/60">
+                    Assigned: <span className="text-white/90 font-semibold">{assignedRecipient}</span>
+                  </p>
+                )}
+
+                {(req.senderNumber || req.whatsappNumber) && (
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-mono">
+                    <Smartphone size={13} className="text-emerald-400 shrink-0" />
+                    <span>{req.senderNumber || req.whatsappNumber}</span>
+                  </div>
+                )}
+
+                {/* Full Date & Time with Icons */}
+                <div className="flex items-center gap-2 text-xs text-white/50 pt-1 font-mono flex-wrap">
+                  <span className="flex items-center gap-1 text-white/70">
+                    <Calendar size={13} className="text-amber-400 shrink-0" />
+                    <span>{formattedDate}</span>
+                  </span>
+                  {formattedTime && (
+                    <>
+                      <span className="text-white/30">•</span>
+                      <span className="flex items-center gap-1 text-white/70">
+                        <Clock size={13} className="text-cyan-400 shrink-0" />
+                        <span>{formattedTime}</span>
+                      </span>
+                    </>
+                  )}
+                </div>
               </div>
-            )}
 
-            {/* Workflow Action Buttons */}
-            <div className="flex gap-2 pt-1 border-t border-white/5">
-              {req.status === 'pending' && (
-                <button
-                  onClick={() => handleUpdateStatus(req.id, 'accepted')}
-                  disabled={loadingId === req.id}
-                  className="flex-1 py-2 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
-                >
-                  <Check size={14} /> Accept Request
-                </button>
+              {/* Trx Digit & Note */}
+              {req.trxDigit && (
+                <div className="bg-[#09090b] p-2.5 rounded-xl text-xs text-white/80 font-mono border border-white/5 flex flex-wrap gap-3 justify-between items-center">
+                  <span className="text-white/50">Trx ID / Digit:</span>
+                  <strong className="text-cyan-300 tracking-wider">{req.trxDigit}</strong>
+                </div>
               )}
-              {req.status === 'accepted' && (
-                <button
-                  onClick={() => handleUpdateStatus(req.id, 'confirmed')}
-                  disabled={loadingId === req.id}
-                  className="flex-1 py-2 bg-rose-600/20 text-rose-400 border border-rose-500/30 hover:bg-rose-600 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
-                >
-                  <CheckCircle2 size={14} /> Confirm Request
-                </button>
+
+              {req.note && (
+                <p className="text-xs text-white/70 italic bg-[#09090b] p-2.5 rounded-xl border border-white/5">
+                  "{req.note}"
+                </p>
               )}
-              {req.status !== 'rejected' && (
+
+              {/* Workflow Action Buttons */}
+              <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-white/5">
+                <div className="flex items-center gap-2 flex-1 flex-wrap">
+                  {req.status === 'pending' && (
+                    <button
+                      onClick={() => handleUpdateStatus(req.id, 'accepted')}
+                      disabled={loadingId === req.id}
+                      className="px-3.5 py-1.5 bg-emerald-600/25 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600 hover:text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                    >
+                      <Check size={14} /> Accept Request
+                    </button>
+                  )}
+                  {req.status === 'accepted' && (
+                    <button
+                      onClick={() => handleUpdateStatus(req.id, 'confirmed')}
+                      disabled={loadingId === req.id}
+                      className="px-3.5 py-1.5 bg-rose-600/25 text-rose-300 border border-rose-500/40 hover:bg-rose-600 hover:text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                    >
+                      <CheckCircle2 size={14} /> Confirm Request
+                    </button>
+                  )}
+                  {req.status !== 'rejected' && (
+                    <button
+                      onClick={() => handleUpdateStatus(req.id, 'rejected')}
+                      disabled={loadingId === req.id}
+                      className="px-3 py-1.5 bg-red-500/15 text-red-300 border border-red-500/30 hover:bg-red-500 hover:text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 active:scale-95"
+                      title="Reject Request"
+                    >
+                      Reject
+                    </button>
+                  )}
+                  {req.status === 'rejected' && (
+                    <button
+                      onClick={() => handleUpdateStatus(req.id, 'confirmed')}
+                      disabled={loadingId === req.id}
+                      className="px-3 py-1.5 bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600 hover:text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 active:scale-95"
+                    >
+                      <CheckCircle2 size={14} /> Re-Confirm
+                    </button>
+                  )}
+                </div>
+
                 <button
-                  onClick={() => handleUpdateStatus(req.id, 'rejected')}
-                  disabled={loadingId === req.id}
-                  className="py-2 px-3 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
-                  title="Reject Request"
+                  onClick={() => handleDeleteRequest(req.id)}
+                  className="p-2 text-white/30 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-all"
+                  title="Delete Request"
                 >
-                  Reject
+                  <Trash2 size={16} />
                 </button>
-              )}
-              <button
-                onClick={() => handleDeleteRequest(req.id)}
-                className="p-2 text-rose-400 hover:bg-rose-500/20 rounded-xl transition-colors"
-                title="Delete Request"
-              >
-                <Trash2 size={16} />
-              </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {finalFiltered.length === 0 && (
           <div className="text-center py-16 text-white/20 text-xs">
