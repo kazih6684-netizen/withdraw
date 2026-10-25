@@ -489,9 +489,9 @@ export default function App() {
         <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-cyan-500/10 blur-[150px] rounded-full" />
       </div>
 
-      <div className={`relative z-10 max-w-md mx-auto flex flex-col justify-center items-center ${
+      <div className={`relative z-10 max-w-md mx-auto flex flex-col justify-start sm:justify-center items-center ${
         view === 'landing' 
-          ? 'h-[100dvh] h-screen overflow-hidden px-3 py-1 sm:py-2' 
+          ? 'h-[100dvh] h-screen overflow-hidden px-3 pt-1 sm:pt-2 pb-2' 
           : 'min-h-screen pt-6 px-4 pb-20'
       }`}>
         <AnimatePresence mode="wait">
@@ -636,39 +636,39 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="h-full w-full flex flex-col justify-center items-center select-none overflow-hidden py-1 relative gap-2 sm:gap-3"
+      className="h-full w-full flex flex-col justify-start items-center select-none overflow-hidden py-0.5 sm:py-1 relative gap-1.5 sm:gap-2"
     >
       {/* Ambient background glow */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-gradient-to-tr from-indigo-600/15 via-purple-600/15 to-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Brand Header */}
-      <div className="text-center shrink-0 space-y-1 relative z-10 pt-0.5">
+      {/* Brand Header (Larger Font, Positioned Higher Up) */}
+      <div className="text-center shrink-0 space-y-1 relative z-10 pt-0 mt-0">
         <motion.div 
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: "spring", stiffness: 300, damping: 20 }}
-          className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-indigo-500/20 border border-white/20 overflow-hidden p-0.5"
+          className="w-13 h-13 sm:w-16 sm:h-16 bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-indigo-500/25 border border-white/20 overflow-hidden p-0.5"
         >
           {appLogoUrl ? (
             <img src={appLogoUrl} alt="Unity Earning" className="w-full h-full object-cover rounded-xl" />
           ) : (
             <div className="w-full h-full rounded-xl bg-black/20 flex items-center justify-center">
-              <TrendingUp size={26} className="text-white" />
+              <TrendingUp size={28} className="text-white" />
             </div>
           )}
         </motion.div>
-        <div>
-          <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white leading-tight">
+        <div className="space-y-0.5">
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white leading-tight drop-shadow-md">
             UNITY EARNING
           </h1>
-          <p className="text-white/50 font-bold tracking-widest uppercase text-[9.5px] sm:text-[10.5px]">
+          <p className="text-xs sm:text-sm font-extrabold tracking-widest uppercase text-indigo-300/90 drop-shadow-sm">
             Secure Access Portal
           </p>
         </div>
       </div>
 
-      {/* Main Glassmorphic Login Card */}
-      <div className="relative w-full bg-[#12131a]/95 backdrop-blur-2xl rounded-2xl sm:rounded-3xl border border-white/10 p-3.5 sm:p-4.5 shadow-2xl z-10 overflow-hidden flex flex-col justify-between my-1 gap-2.5">
+      {/* Main Glassmorphic Login Card (Shifted Slightly Higher Up) */}
+      <div className="relative w-full bg-[#12131a]/95 backdrop-blur-2xl rounded-2xl sm:rounded-3xl border border-white/10 p-3.5 sm:p-4 shadow-2xl z-10 overflow-hidden flex flex-col justify-between my-0.5 gap-2">
         
         {/* Success Celebration Overlay (100% English) */}
         <AnimatePresence>
