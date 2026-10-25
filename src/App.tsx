@@ -489,10 +489,10 @@ export default function App() {
         <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-cyan-500/10 blur-[150px] rounded-full" />
       </div>
 
-      <div className={`relative z-10 max-w-md mx-auto w-full flex flex-col justify-center items-center ${
+      <div className={`relative z-10 mx-auto w-full flex flex-col ${
         view === 'landing' 
-          ? 'min-h-[100dvh] py-3 px-3.5 sm:px-4' 
-          : 'min-h-screen pt-6 px-4 pb-20'
+          ? 'max-w-md min-h-[100dvh] justify-center items-center py-3 px-3.5 sm:px-4' 
+          : 'max-w-xl md:max-w-3xl min-h-screen pt-4 px-3.5 sm:px-6 pb-20 justify-start items-stretch'
       }`}>
         <AnimatePresence mode="wait">
           {view === 'landing' && (
