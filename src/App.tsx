@@ -495,7 +495,7 @@ export default function App() {
 
       <div className={`relative z-10 max-w-md mx-auto flex flex-col w-full ${
         view === 'landing' 
-          ? 'h-full max-h-[100dvh] overflow-hidden px-3 sm:px-4 pt-1 sm:pt-2 pb-2 justify-start gap-1 sm:gap-2' 
+          ? 'h-full max-h-[100dvh] overflow-hidden px-3 sm:px-4 py-1.5 sm:py-2.5 justify-between' 
           : 'min-h-screen pt-6 px-4 pb-20'
       }`}>
         <AnimatePresence mode="wait">
@@ -640,39 +640,39 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="h-full w-full flex flex-col justify-start items-center select-none overflow-hidden max-h-full pt-0 pb-1 gap-1 sm:gap-1.5 relative"
+      className="h-full w-full flex flex-col justify-between items-center select-none overflow-hidden max-h-full py-0.5 sm:py-1 relative"
     >
       {/* Ambient background glow */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-gradient-to-tr from-indigo-600/15 via-purple-600/15 to-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Brand Header */}
-      <div className="text-center shrink-0 space-y-0.5 pt-0 relative z-10">
+      <div className="text-center shrink-0 space-y-1 pt-0.5 sm:pt-1 relative z-10">
         <motion.div 
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: "spring", stiffness: 300, damping: 20 }}
-          className="w-11 h-11 sm:w-13 sm:h-13 bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-indigo-500/20 border border-white/20 overflow-hidden p-0.5 mb-0.5"
+          className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-indigo-500/20 border border-white/20 overflow-hidden p-0.5"
         >
           {appLogoUrl ? (
             <img src={appLogoUrl} alt="Unity Earning" className="w-full h-full object-cover rounded-xl" />
           ) : (
             <div className="w-full h-full rounded-xl bg-black/20 flex items-center justify-center">
-              <TrendingUp size={24} className="text-white" />
+              <TrendingUp size={26} className="text-white" />
             </div>
           )}
         </motion.div>
         <div>
-          <h1 className="text-base sm:text-lg font-black tracking-tight text-white leading-tight">
+          <h1 className="text-lg sm:text-xl font-black tracking-tight text-white leading-tight">
             UNITY EARNING
           </h1>
-          <p className="text-white/50 font-bold tracking-widest uppercase text-[8.5px] sm:text-[9.5px]">
+          <p className="text-white/50 font-bold tracking-widest uppercase text-[9px] sm:text-[10px]">
             Secure Access Portal
           </p>
         </div>
       </div>
 
       {/* Main Glassmorphic Login Card */}
-      <div className="relative w-full flex-1 max-h-[520px] sm:max-h-[580px] bg-[#12131a]/95 backdrop-blur-2xl rounded-2xl sm:rounded-3xl border border-white/10 p-3 sm:p-4 shadow-2xl z-10 overflow-hidden flex flex-col justify-between mt-0.5 mb-0">
+      <div className="relative w-full flex-1 max-h-[520px] sm:max-h-[580px] bg-[#12131a]/95 backdrop-blur-2xl rounded-2xl sm:rounded-3xl border border-white/10 p-3 sm:p-4 shadow-2xl z-10 overflow-hidden flex flex-col justify-between my-1 sm:my-2">
         
         {/* Success Celebration Overlay (100% English) */}
         <AnimatePresence>
