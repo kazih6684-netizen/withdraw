@@ -19,7 +19,7 @@ import {
   handleFirestoreError,
   OperationType
 } from './lib/firebase';
-import { UserProfile, TeamMember, RequestData } from './types';
+import { UserProfile, TeamMember, RequestData, FakeInvoice1Data, FakeInvoice2Data } from './types';
 import { TRANSLATIONS } from './constants';
 import { MemberDesignBadge } from './components/MemberDesignBadge';
 import { motion, AnimatePresence } from 'motion/react';
@@ -54,7 +54,11 @@ import {
   RotateCcw,
   Upload,
   Zap,
-  AlertTriangle
+  AlertTriangle,
+  ArrowLeft,
+  Award,
+  Info,
+  CreditCard
 } from 'lucide-react';
 
 // --- Image Compression Helper ---
@@ -485,7 +489,11 @@ export default function App() {
         <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-cyan-500/10 blur-[150px] rounded-full" />
       </div>
 
-      <div className="relative z-10 max-w-md mx-auto min-h-screen flex flex-col pt-6 px-4 pb-20">
+      <div className={`relative z-10 max-w-md mx-auto flex flex-col ${
+        view === 'landing' 
+          ? 'h-[100dvh] h-screen overflow-hidden px-3.5 py-2.5 sm:py-3.5' 
+          : 'min-h-screen pt-6 px-4 pb-20'
+      }`}>
         <AnimatePresence mode="wait">
           {view === 'landing' && (
             <LandingPage key="landing" onEnter={handleEnterAsGuest} onAdminLogin={handleAdminAuthSuccess} userPinConfig={userPinConfig} appLogoUrl={appLogoUrl} />
@@ -521,32 +529,61 @@ export default function App() {
 // --- Landing Page ---
 
 function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onEnter: () => void, onAdminLogin: () => void, userPinConfig: string, appLogoUrl?: string, key?: string }) {
-  const [loginMode, setLoginMode] = useState<'none' | 'user' | 'admin'>('none');
+  const [loginMode, setLoginMode] = useState<'user' | 'admin'>('user');
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+
+  const expectedLength = loginMode === 'admin' ? 6 : (userPinConfig?.length || 4);
+
+  const triggerSuccess = (callback: () => void) => {
+    setIsSuccess(true);
+    setError(false);
+    setTimeout(() => {
+      callback();
+    }, 800);
+  };
+
+  const triggerError = () => {
+    setError(true);
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate([40, 60, 40]);
+      } catch (e) {
+        // ignore
+      }
+    }
+    setTimeout(() => {
+      setPin('');
+      setError(false);
+    }, 1200);
+  };
 
   const handleKeypadPress = (key: string) => {
+    if (isSuccess) return;
+
     if (key === 'del') {
       setPin(prev => prev.slice(0, -1));
       setError(false);
-    } else if (pin.length < 12) {
+    } else if (key === 'clear') {
+      setPin('');
+      setError(false);
+    } else if (pin.length < expectedLength) {
       const newPin = pin + key;
       setPin(newPin);
       setError(false);
 
       if (loginMode === 'admin') {
         if (newPin === '212650') {
-          onAdminLogin();
+          triggerSuccess(onAdminLogin);
         } else if (newPin.length >= 6) {
-          setError(true);
-          setTimeout(() => setError(false), 2000);
+          triggerError();
         }
       } else if (loginMode === 'user') {
         if (newPin === userPinConfig) {
-          onEnter();
-        } else if (newPin.length >= userPinConfig.length) {
-          setError(true);
-          setTimeout(() => setError(false), 2000);
+          triggerSuccess(onEnter);
+        } else if (newPin.length >= expectedLength) {
+          triggerError();
         }
       }
     }
@@ -554,129 +591,325 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
 
   const handleAuth = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSuccess) return;
+
     if (loginMode === 'admin') {
       if (pin === '212650') {
-        onAdminLogin();
+        triggerSuccess(onAdminLogin);
       } else {
-        setError(true);
-        setTimeout(() => setError(false), 2000);
+        triggerError();
       }
     } else if (loginMode === 'user') {
       if (pin === userPinConfig) {
-        onEnter();
+        triggerSuccess(onEnter);
       } else {
-        setError(true);
-        setTimeout(() => setError(false), 2000);
+        triggerError();
       }
     }
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isSuccess) return;
+      if (e.key >= '0' && e.key <= '9') {
+        handleKeypadPress(e.key);
+      } else if (e.key === 'Backspace') {
+        handleKeypadPress('del');
+      } else if (e.key === 'Escape') {
+        setPin('');
+        setError(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [pin, loginMode, isSuccess, userPinConfig, expectedLength]);
+
+  const switchMode = (mode: 'user' | 'admin') => {
+    if (isSuccess) return;
+    setLoginMode(mode);
+    setPin('');
+    setError(false);
+  };
+
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="flex-1 flex flex-col items-center justify-center gap-10 py-6"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="h-full w-full flex flex-col justify-between items-center select-none overflow-hidden max-h-full py-1 sm:py-2 relative"
     >
-      <div className="text-center space-y-4">
+      {/* Ambient background glow */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-gradient-to-tr from-indigo-600/15 via-purple-600/15 to-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+
+      {/* Brand Header */}
+      <div className="text-center shrink-0 space-y-1.5 pt-1 sm:pt-2 relative z-10">
         <motion.div 
-          initial={{ scale: 0.8 }}
-          animate={{ scale: 1 }}
-          className="w-24 h-24 bg-gradient-to-br from-indigo-500 via-purple-600 to-cyan-500 rounded-3xl mx-auto flex items-center justify-center shadow-2xl shadow-indigo-500/20 border border-white/10 overflow-hidden relative"
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 300, damping: 20 }}
+          className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-indigo-500/20 border border-white/20 overflow-hidden p-0.5"
         >
           {appLogoUrl ? (
-            <img src={appLogoUrl} alt="Unity Earning Logo" className="w-full h-full object-cover" />
+            <img src={appLogoUrl} alt="Unity Earning" className="w-full h-full object-cover rounded-xl" />
           ) : (
-            <TrendingUp size={44} className="text-white" />
+            <div className="w-full h-full rounded-xl bg-black/20 flex items-center justify-center">
+              <TrendingUp size={30} className="text-white" />
+            </div>
           )}
         </motion.div>
         <div>
-          <h1 className="text-3xl font-black tracking-tight text-white mb-1">
-            {TRANSLATIONS.TITLE}
+          <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white leading-tight">
+            UNITY EARNING
           </h1>
-          <p className="text-white/50 font-semibold tracking-widest uppercase text-xs">
-            {TRANSLATIONS.SUBTITLE}
+          <p className="text-white/50 font-bold tracking-widest uppercase text-[10px] sm:text-xs">
+            Secure Access Portal
           </p>
         </div>
       </div>
 
-      <div className="w-full space-y-4 max-w-sm">
-        {loginMode === 'none' ? (
-          <>
-            <button 
-              onClick={() => { setLoginMode('user'); setPin(''); }}
-              className="w-full py-4 bg-white text-black hover:bg-white/90 transition-all rounded-2xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 group"
+      {/* Main Glassmorphic Login Card */}
+      <div className="relative w-full flex-1 max-h-[580px] bg-[#12131a]/95 backdrop-blur-2xl rounded-3xl border border-white/10 p-4 sm:p-5 shadow-2xl z-10 overflow-hidden flex flex-col justify-between my-2">
+        
+        {/* Success Celebration Overlay (100% English) */}
+        <AnimatePresence>
+          {isSuccess && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-30 bg-[#0c0d12]/95 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center p-6 text-center overflow-hidden"
             >
-              <UserIcon size={20} />
-              {TRANSLATIONS.ENTER} User
-            </button>
-            <button 
-              onClick={() => { setLoginMode('admin'); setPin(''); }}
-              className="w-full py-4 bg-[#18181b] hover:bg-[#27272a] border border-white/10 transition-all rounded-2xl font-semibold text-white flex items-center justify-center gap-2"
-            >
-              <ShieldCheck size={20} className="text-indigo-400" />
-              {TRANSLATIONS.ADMIN_LOGIN}
-            </button>
-          </>
-        ) : (
-          <form onSubmit={handleAuth} className="space-y-4 bg-[#18181b] p-6 rounded-3xl border border-white/10 shadow-xl">
-            <h2 className="text-center text-lg font-extrabold mb-1">
-              {loginMode === 'admin' ? 'Admin Login' : 'User Login'}
-            </h2>
-            <div className="relative">
-              <input 
-                type="password"
-                readOnly
-                placeholder="Enter PIN"
-                value={pin}
-                className={`w-full bg-[#09090b] border ${error ? 'border-rose-500' : 'border-white/10'} rounded-2xl py-3.5 px-6 text-center text-xl tracking-[0.3em] font-mono focus:outline-none transition-colors cursor-default`}
+              {/* Expanding Pulse Wave Rings */}
+              <motion.div
+                initial={{ scale: 0.5, opacity: 0.8 }}
+                animate={{ scale: 2.3, opacity: 0 }}
+                transition={{ duration: 1.1, repeat: Infinity, ease: "easeOut" }}
+                className="absolute w-24 h-24 rounded-full border-2 border-emerald-500/40 pointer-events-none"
               />
-              {error && <p className="text-rose-500 text-xs text-center mt-2 font-semibold">Incorrect PIN</p>}
-            </div>
-            
-            <div className="grid grid-cols-3 gap-2 mt-3">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-                <button 
-                  key={num} 
-                  type="button" 
-                  onClick={() => handleKeypadPress(num.toString())} 
-                  className="py-3.5 bg-[#27272a] rounded-xl font-bold text-xl hover:bg-[#3f3f46] transition-colors active:scale-95 text-white/90"
+              <motion.div
+                initial={{ scale: 0.3, opacity: 1 }}
+                animate={{ scale: 1.8, opacity: 0 }}
+                transition={{ duration: 1.1, delay: 0.25, repeat: Infinity, ease: "easeOut" }}
+                className="absolute w-24 h-24 rounded-full bg-emerald-500/20 pointer-events-none"
+              />
+
+              {/* Bouncing Checkmark Badge */}
+              <motion.div
+                initial={{ scale: 0, rotate: -40 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 320, damping: 18 }}
+                className="w-20 h-20 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 p-0.5 shadow-[0_0_35px_rgba(16,185,129,0.55)] mb-4 flex items-center justify-center relative"
+              >
+                <div className="w-full h-full bg-[#0a1510] rounded-full flex items-center justify-center">
+                  <CheckCircle2 size={44} className="text-emerald-400 drop-shadow-[0_0_12px_rgba(52,211,153,0.9)]" />
+                </div>
+              </motion.div>
+
+              <motion.h3
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                className="text-xl font-black text-white tracking-wide uppercase"
+              >
+                Verification Successful!
+              </motion.h3>
+
+              <motion.p
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.22 }}
+                className="text-xs text-emerald-400 font-medium mt-1 mb-5"
+              >
+                {loginMode === 'admin' ? 'Entering Admin Portal...' : 'Entering User Dashboard...'}
+              </motion.p>
+
+              {/* Progress Shimmer */}
+              <div className="w-48 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: "0%" }}
+                  animate={{ width: "100%" }}
+                  transition={{ duration: 0.75, ease: "easeInOut" }}
+                  className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 rounded-full shadow-[0_0_10px_rgba(52,211,153,0.8)]"
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Top Segmented Mode Switcher */}
+        <div className="flex p-1 bg-black/50 border border-white/10 rounded-2xl relative shrink-0 mb-2">
+          <button
+            type="button"
+            onClick={() => switchMode('user')}
+            className={`flex-1 py-2 sm:py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 relative z-10 ${
+              loginMode === 'user' ? 'text-white' : 'text-white/50 hover:text-white/80'
+            }`}
+          >
+            {loginMode === 'user' && (
+              <motion.div
+                layoutId="loginTabIndicator"
+                className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-indigo-500 rounded-xl -z-10 shadow-md shadow-indigo-500/30"
+                transition={{ type: "spring", bounce: 0.15, duration: 0.35 }}
+              />
+            )}
+            <UserIcon size={14} />
+            <span>User Portal</span>
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => switchMode('admin')}
+            className={`flex-1 py-2 sm:py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 relative z-10 ${
+              loginMode === 'admin' ? 'text-white' : 'text-white/50 hover:text-white/80'
+            }`}
+          >
+            {loginMode === 'admin' && (
+              <motion.div
+                layoutId="loginTabIndicator"
+                className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl -z-10 shadow-md shadow-purple-500/30"
+                transition={{ type: "spring", bounce: 0.15, duration: 0.35 }}
+              />
+            )}
+            <ShieldCheck size={14} />
+            <span>Admin Access</span>
+          </button>
+        </div>
+
+        {/* PIN Entry Form */}
+        <form onSubmit={handleAuth} className="flex-1 flex flex-col justify-between">
+          <div className="text-center shrink-0">
+            <h2 className="text-sm font-extrabold text-white">
+              {loginMode === 'admin' ? 'Admin Master PIN' : 'User Access PIN'}
+            </h2>
+            <p className="text-[11px] text-white/40 mt-0.5">
+              {loginMode === 'admin' ? 'Enter 6-digit master passcode' : `Enter ${expectedLength}-digit PIN code`}
+            </p>
+          </div>
+
+          {/* Animated PIN Dots / Capsules */}
+          <motion.div 
+            animate={error ? { x: [-8, 8, -6, 6, -3, 3, 0] } : {}}
+            transition={{ duration: 0.4 }}
+            className="flex justify-center items-center gap-2.5 sm:gap-3 py-1.5 shrink-0"
+          >
+            {Array.from({ length: expectedLength }).map((_, idx) => {
+              const isFilled = idx < pin.length;
+              const isCurrent = idx === pin.length;
+              return (
+                <div
+                  key={idx}
+                  className={`w-11 h-12 sm:w-12 sm:h-13 rounded-2xl flex items-center justify-center transition-all duration-200 border-2 ${
+                    isSuccess
+                      ? 'border-emerald-500 bg-emerald-500/15 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
+                      : error
+                      ? 'border-rose-500/80 bg-rose-500/15 shadow-[0_0_15px_rgba(244,63,94,0.3)]'
+                      : isFilled
+                      ? 'border-indigo-500 bg-indigo-500/15 shadow-[0_0_14px_rgba(99,102,241,0.3)]'
+                      : isCurrent
+                      ? 'border-indigo-400 bg-white/[0.04] ring-2 ring-indigo-500/30'
+                      : 'border-white/10 bg-black/40'
+                  }`}
                 >
-                  {num}
-                </button>
-              ))}
-              <button 
-                type="button" 
-                onClick={() => setLoginMode('none')} 
-                className="py-3.5 bg-[#27272a] rounded-xl font-semibold text-xs hover:bg-[#3f3f46] transition-colors active:scale-95 text-white/50"
+                  {isFilled && (
+                    <motion.div
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                      className={`w-3.5 h-3.5 rounded-full ${
+                        isSuccess
+                          ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,1)]'
+                          : error
+                          ? 'bg-rose-400 shadow-[0_0_10px_rgba(251,113,133,1)]'
+                          : 'bg-indigo-400 shadow-[0_0_10px_rgba(129,140,248,0.9)]'
+                      }`}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </motion.div>
+
+          {/* Status Message */}
+          <div className="h-4 flex items-center justify-center shrink-0">
+            {error ? (
+              <motion.p 
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-rose-400 text-xs text-center font-bold"
               >
-                BACK
-              </button>
-              <button 
-                type="button" 
-                onClick={() => handleKeypadPress('0')} 
-                className="py-3.5 bg-[#27272a] rounded-xl font-bold text-xl hover:bg-[#3f3f46] transition-colors active:scale-95 text-white/90"
+                Incorrect PIN! Please try again
+              </motion.p>
+            ) : isSuccess ? (
+              <motion.p 
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-emerald-400 text-xs text-center font-bold"
               >
-                0
-              </button>
+                Correct PIN! Logging in...
+              </motion.p>
+            ) : (
+              <p className="text-white/30 text-[10px] sm:text-[11px] text-center font-medium">
+                Enter code via keypad or keyboard
+              </p>
+            )}
+          </div>
+
+          {/* Bold, Chunky Tactile Keypad */}
+          <div className="grid grid-cols-3 gap-2 sm:gap-2.5 shrink-0 my-1">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
               <button 
+                key={num} 
                 type="button" 
-                onClick={() => handleKeypadPress('del')} 
-                className="py-3.5 bg-[#27272a] rounded-xl font-bold text-lg hover:bg-[#3f3f46] transition-colors active:scale-95 flex items-center justify-center text-rose-400"
+                disabled={isSuccess}
+                onClick={() => handleKeypadPress(num.toString())} 
+                className="h-12 sm:h-13.5 bg-[#1c1f2e] hover:bg-[#272b3f] active:bg-indigo-600 active:scale-95 disabled:opacity-50 border-2 border-white/15 hover:border-white/30 rounded-2xl font-black text-2xl sm:text-3xl text-white transition-all flex items-center justify-center shadow-md select-none"
               >
-                <Delete size={22} />
+                {num}
               </button>
-            </div>
+            ))}
             
             <button 
-              type="submit"
-              disabled={!pin}
-              className="w-full mt-3 py-3.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-colors rounded-xl font-bold text-white shadow-lg shadow-indigo-600/20 active:scale-95 flex justify-center items-center gap-2"
+              type="button" 
+              disabled={isSuccess || pin.length === 0}
+              onClick={() => handleKeypadPress('clear')} 
+              className="h-12 sm:h-13.5 bg-[#171926] hover:bg-[#232738] active:scale-95 disabled:opacity-30 border-2 border-white/10 rounded-2xl font-black text-xs sm:text-sm tracking-wider text-white/60 hover:text-white transition-all flex items-center justify-center select-none uppercase"
             >
-              <CheckCircle2 size={20} /> Login
+              CLEAR
             </button>
-          </form>
-        )}
+            
+            <button 
+              type="button" 
+              disabled={isSuccess}
+              onClick={() => handleKeypadPress('0')} 
+              className="h-12 sm:h-13.5 bg-[#1c1f2e] hover:bg-[#272b3f] active:bg-indigo-600 active:scale-95 disabled:opacity-50 border-2 border-white/15 hover:border-white/30 rounded-2xl font-black text-2xl sm:text-3xl text-white transition-all flex items-center justify-center shadow-md select-none"
+            >
+              0
+            </button>
+            
+            <button 
+              type="button" 
+              disabled={isSuccess || pin.length === 0}
+              onClick={() => handleKeypadPress('del')} 
+              className="h-12 sm:h-13.5 bg-[#171926] hover:bg-[#232738] active:scale-95 disabled:opacity-30 border-2 border-white/10 rounded-2xl font-bold text-rose-400 hover:text-rose-300 transition-all flex items-center justify-center select-none"
+            >
+              <Delete size={22} />
+            </button>
+          </div>
+
+          {/* Action / Enter Button */}
+          <button 
+            type="submit"
+            disabled={!pin || isSuccess}
+            className={`w-full h-11 sm:h-12 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-wider text-white shadow-lg transition-all active:scale-98 flex justify-center items-center gap-2 select-none shrink-0 ${
+              loginMode === 'admin'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-purple-600/30'
+                : 'bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 shadow-indigo-600/30'
+            } disabled:opacity-40 disabled:cursor-not-allowed`}
+          >
+            <CheckCircle2 size={18} />
+            <span>{loginMode === 'admin' ? 'Admin Login' : 'Login to Portal'}</span>
+          </button>
+        </form>
       </div>
     </motion.div>
   );
@@ -696,10 +929,15 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUr
   const [pinTargetMember, setPinTargetMember] = useState<TeamMember | null>(null);
   const [memberPinInput, setMemberPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
+  const [memberPinSuccess, setMemberPinSuccess] = useState(false);
   const [activeMember, setActiveMember] = useState<TeamMember | null>(null);
   const [showOptionModal, setShowOptionModal] = useState(false);
   
-  const [activeModal, setActiveModal] = useState<'none' | 'withdraw' | 'seat_booking' | 'sure_shot' | 'sure_shot_invoice' | 'history' | 'post_booking' | 'invoice'>('none');
+  const [activeModal, setActiveModal] = useState<
+    'none' | 'withdraw' | 'seat_booking' | 'sure_shot' | 'sure_shot_invoice' | 'history' | 'post_booking' | 'invoice' | 'fake_disclaimer' | 'fake_form_1' | 'fake_form_2' | 'fake_invoice_1' | 'fake_invoice_2'
+  >('none');
+  const [fakeInvoice1Data, setFakeInvoice1Data] = useState<FakeInvoice1Data | null>(null);
+  const [fakeInvoice2Data, setFakeInvoice2Data] = useState<FakeInvoice2Data | null>(null);
   const [latestBooking, setLatestBooking] = useState<RequestData | null>(null);
   const [latestSureShot, setLatestSureShot] = useState<RequestData | null>(null);
   const [history, setHistory] = useState<RequestData[]>([]);
@@ -757,27 +995,41 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUr
     setPinTargetMember(member);
     setMemberPinInput('');
     setPinError(false);
+    setMemberPinSuccess(false);
   };
 
   const handleVerifyMemberPin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pinTargetMember) return;
+    if (!pinTargetMember || memberPinSuccess) return;
     
     const expectedPin = pinTargetMember.pin || '1234';
     if (memberPinInput === expectedPin) {
-      setActiveMember(pinTargetMember);
-      setPinTargetMember(null);
-      setShowOptionModal(true);
+      setMemberPinSuccess(true);
+      setTimeout(() => {
+        setActiveMember(pinTargetMember);
+        setPinTargetMember(null);
+        setMemberPinSuccess(false);
+        setShowOptionModal(true);
+      }, 700);
     } else {
       setPinError(true);
-      setTimeout(() => setPinError(false), 2000);
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate([40, 60, 40]); } catch (e) {}
+      }
+      setTimeout(() => {
+        setMemberPinInput('');
+        setPinError(false);
+      }, 1200);
     }
   };
 
   const handleKeypadPress = (val: string) => {
-    if (!pinTargetMember) return;
+    if (!pinTargetMember || memberPinSuccess) return;
     if (val === 'del') {
       setMemberPinInput(prev => prev.slice(0, -1));
+      setPinError(false);
+    } else if (val === 'clear') {
+      setMemberPinInput('');
       setPinError(false);
     } else if (memberPinInput.length < 8) {
       const newPin = memberPinInput + val;
@@ -786,12 +1038,22 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUr
 
       const expectedPin = pinTargetMember.pin || '1234';
       if (newPin === expectedPin) {
-        setActiveMember(pinTargetMember);
-        setPinTargetMember(null);
-        setShowOptionModal(true);
+        setMemberPinSuccess(true);
+        setTimeout(() => {
+          setActiveMember(pinTargetMember);
+          setPinTargetMember(null);
+          setMemberPinSuccess(false);
+          setShowOptionModal(true);
+        }, 700);
       } else if (newPin.length >= expectedPin.length) {
         setPinError(true);
-        setTimeout(() => setPinError(false), 2000);
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          try { navigator.vibrate([40, 60, 40]); } catch (e) {}
+        }
+        setTimeout(() => {
+          setMemberPinInput('');
+          setPinError(false);
+        }, 1200);
       }
     }
   };
@@ -888,56 +1150,172 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUr
       <AnimatePresence>
         {pinTargetMember && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setPinTargetMember(null)} className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-[#18181b] p-6 rounded-3xl border border-white/10 shadow-2xl z-10">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => !memberPinSuccess && setPinTargetMember(null)} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-[#12131a]/95 backdrop-blur-2xl p-5 sm:p-6 rounded-3xl border border-white/10 shadow-2xl z-10 overflow-hidden">
+              
+              {/* Member Pin Success Celebration Overlay */}
+              <AnimatePresence>
+                {memberPinSuccess && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 z-30 bg-[#0c0d12]/95 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center p-6 text-center overflow-hidden"
+                  >
+                    <motion.div
+                      initial={{ scale: 0.5, opacity: 0.8 }}
+                      animate={{ scale: 2.2, opacity: 0 }}
+                      transition={{ duration: 1.1, repeat: Infinity, ease: "easeOut" }}
+                      className="absolute w-24 h-24 rounded-full border-2 border-emerald-500/40 pointer-events-none"
+                    />
+                    <motion.div
+                      initial={{ scale: 0, rotate: -40 }}
+                      animate={{ scale: 1, rotate: 0 }}
+                      transition={{ type: "spring", stiffness: 320, damping: 18 }}
+                      className="w-16 h-16 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 p-0.5 shadow-[0_0_30px_rgba(16,185,129,0.5)] mb-3 flex items-center justify-center"
+                    >
+                      <div className="w-full h-full bg-[#0a1510] rounded-full flex items-center justify-center">
+                        <CheckCircle2 size={36} className="text-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.9)]" />
+                      </div>
+                    </motion.div>
+                    <h3 className="text-lg font-black text-white">পিন যাচাই সফল হয়েছে!</h3>
+                    <p className="text-xs text-emerald-400 font-medium mt-1 mb-4">মেন্যু অপশন লোড হচ্ছে...</p>
+                    <div className="w-40 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <motion.div
+                        initial={{ width: "0%" }}
+                        animate={{ width: "100%" }}
+                        transition={{ duration: 0.65, ease: "easeInOut" }}
+                        className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full"
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-2 text-indigo-400">
-                  <Lock size={18} />
-                  <span className="text-xs font-bold uppercase tracking-wider">Account Access</span>
+                  <Lock size={16} />
+                  <span className="text-xs font-bold uppercase tracking-wider">অ্যাকাউন্ট ভেরিফিকেশন</span>
                 </div>
-                <button onClick={() => setPinTargetMember(null)} className="text-white/40 hover:text-white"><XCircle size={20} /></button>
+                <button 
+                  onClick={() => !memberPinSuccess && setPinTargetMember(null)} 
+                  className="text-white/40 hover:text-white transition-colors"
+                >
+                  <XCircle size={20} />
+                </button>
               </div>
               
-              <div className="flex items-center gap-3 mb-4 bg-[#09090b] p-2.5 rounded-2xl border border-white/5">
+              <div className="flex items-center gap-3 mb-4 bg-black/40 p-2.5 rounded-2xl border border-white/5">
                 <MemberDesignBadge name={pinTargetMember.name} role={pinTargetMember.role} size="md" />
-                <div>
-                  <h3 className="text-sm font-bold text-white">{pinTargetMember.name}</h3>
-                  <p className="text-[10px] text-white/50">Enter PIN to access Withdraw or Seat Booking</p>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-white truncate">{pinTargetMember.name}</h3>
+                  <p className="text-[10px] text-white/50">অ্যাক্সেস করতে মেম্বার পিন কোড দিন</p>
                 </div>
               </div>
 
-              <form onSubmit={handleVerifyMemberPin} className="space-y-3">
-                <input 
-                  type="password"
-                  readOnly
-                  placeholder="PIN"
-                  value={memberPinInput}
-                  className={`w-full bg-[#09090b] border ${pinError ? 'border-rose-500' : 'border-white/10'} rounded-2xl py-3 px-4 text-center text-xl tracking-[0.3em] font-mono focus:outline-none`}
-                />
-                {pinError && <p className="text-rose-500 text-xs text-center font-semibold">Incorrect Member PIN</p>}
+              <form onSubmit={handleVerifyMemberPin} className="space-y-4">
+                {/* Animated PIN Dots / Capsules */}
+                <motion.div 
+                  animate={pinError ? { x: [-8, 8, -6, 6, -3, 3, 0] } : {}}
+                  transition={{ duration: 0.4 }}
+                  className="flex justify-center items-center gap-2.5 py-1"
+                >
+                  {Array.from({ length: (pinTargetMember.pin || '1234').length }).map((_, idx) => {
+                    const isFilled = idx < memberPinInput.length;
+                    const isCurrent = idx === memberPinInput.length;
+                    return (
+                      <div
+                        key={idx}
+                        className={`w-11 h-13 rounded-2xl flex items-center justify-center transition-all duration-200 border ${
+                          memberPinSuccess
+                            ? 'border-emerald-500 bg-emerald-500/15 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
+                            : pinError
+                            ? 'border-rose-500/80 bg-rose-500/15 shadow-[0_0_15px_rgba(244,63,94,0.3)]'
+                            : isFilled
+                            ? 'border-indigo-500/70 bg-indigo-500/10 shadow-[0_0_12px_rgba(99,102,241,0.25)]'
+                            : isCurrent
+                            ? 'border-indigo-400 bg-white/[0.04] ring-2 ring-indigo-500/30'
+                            : 'border-white/10 bg-black/40'
+                        }`}
+                      >
+                        {isFilled && (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                            className={`w-3.5 h-3.5 rounded-full ${
+                              memberPinSuccess
+                                ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,1)]'
+                                : pinError
+                                ? 'bg-rose-400 shadow-[0_0_10px_rgba(251,113,133,1)]'
+                                : 'bg-indigo-400 shadow-[0_0_10px_rgba(129,140,248,0.9)]'
+                            }`}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </motion.div>
 
-                <div className="grid grid-cols-3 gap-2 pt-2">
+                {/* Status text */}
+                <div className="h-4 flex items-center justify-center">
+                  {pinError ? (
+                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-rose-400 text-xs text-center font-bold">
+                      ভুল পিন কোড! পুনরায় চেষ্টা করুন
+                    </motion.p>
+                  ) : memberPinSuccess ? (
+                    <p className="text-emerald-400 text-xs text-center font-bold">সঠিক পিন কোড!</p>
+                  ) : (
+                    <p className="text-white/30 text-[11px] text-center">{(pinTargetMember.pin || '1234').length} ডিজিটের পিন কোড দিন</p>
+                  )}
+                </div>
+
+                {/* Keypad */}
+                <div className="grid grid-cols-3 gap-2 pt-1">
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
                     <button 
                       key={num} 
                       type="button" 
+                      disabled={memberPinSuccess}
                       onClick={() => handleKeypadPress(num.toString())} 
-                      className="py-3 bg-[#27272a] rounded-xl font-bold text-lg hover:bg-[#3f3f46] transition-colors text-white"
+                      className="h-12 bg-[#1c1f2e] hover:bg-[#272b3f] active:bg-indigo-600 active:scale-95 disabled:opacity-50 border-2 border-white/15 hover:border-white/30 rounded-2xl font-black text-2xl text-white transition-all flex items-center justify-center select-none shadow-md"
                     >
                       {num}
                     </button>
                   ))}
-                  <button type="button" onClick={() => setPinTargetMember(null)} className="py-3 bg-[#27272a] rounded-xl text-xs font-semibold text-white/40">CANCEL</button>
-                  <button type="button" onClick={() => handleKeypadPress('0')} className="py-3 bg-[#27272a] rounded-xl font-bold text-lg text-white">0</button>
-                  <button type="button" onClick={() => handleKeypadPress('del')} className="py-3 bg-[#27272a] rounded-xl text-rose-400 flex items-center justify-center"><Delete size={20} /></button>
+                  <button 
+                    type="button" 
+                    disabled={memberPinSuccess}
+                    onClick={() => setPinTargetMember(null)} 
+                    className="h-12 bg-[#171926] hover:bg-[#232738] active:scale-95 border-2 border-white/10 rounded-2xl text-xs font-black tracking-wider text-white/60 hover:text-white transition-all select-none uppercase"
+                  >
+                    CANCEL
+                  </button>
+                  <button 
+                    type="button" 
+                    disabled={memberPinSuccess}
+                    onClick={() => handleKeypadPress('0')} 
+                    className="h-12 bg-[#1c1f2e] hover:bg-[#272b3f] active:bg-indigo-600 active:scale-95 disabled:opacity-50 border-2 border-white/15 hover:border-white/30 rounded-2xl font-black text-2xl text-white transition-all flex items-center justify-center select-none shadow-md"
+                  >
+                    0
+                  </button>
+                  <button 
+                    type="button" 
+                    disabled={memberPinSuccess || memberPinInput.length === 0}
+                    onClick={() => handleKeypadPress('del')} 
+                    className="h-12 bg-[#171926] hover:bg-[#232738] active:scale-95 disabled:opacity-30 border-2 border-white/10 rounded-2xl text-rose-400 hover:text-rose-300 flex items-center justify-center transition-all select-none"
+                  >
+                    <Delete size={22} />
+                  </button>
                 </div>
 
                 <button 
                   type="submit" 
-                  disabled={!memberPinInput}
-                  className="w-full mt-2 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20"
+                  disabled={!memberPinInput || memberPinSuccess}
+                  className="w-full mt-1 py-3 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 disabled:opacity-40 text-white rounded-2xl font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-98 flex items-center justify-center gap-2 select-none"
                 >
-                  Verify & Continue
+                  <CheckCircle2 size={18} />
+                  <span>যাচাই করে এগিয়ে যান</span>
                 </button>
               </form>
             </motion.div>
@@ -1038,6 +1416,28 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUr
                   </div>
                   <ChevronRight size={18} className="text-white/30 group-hover:text-white shrink-0 ml-2" />
                 </button>
+
+                <button
+                  onClick={() => {
+                    setShowOptionModal(false);
+                    setActiveModal('fake_disclaimer');
+                  }}
+                  className="w-full max-w-full box-border p-3.5 sm:p-4 bg-gradient-to-r from-purple-900/40 via-fuchsia-900/30 to-pink-900/40 border border-purple-500/30 hover:border-purple-500/60 rounded-2xl text-left flex items-center justify-between group transition-all min-w-0 overflow-hidden shadow-lg shadow-purple-950/30"
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center border border-purple-500/30 shrink-0">
+                      <FileText size={20} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-white group-hover:text-purple-300 transition-colors text-sm sm:text-base truncate">Fake Seat Book</h4>
+                        <span className="text-[9px] bg-purple-500/30 text-purple-200 border border-purple-500/40 px-1.5 py-0.5 rounded font-extrabold tracking-wide uppercase shrink-0">DEMO</span>
+                      </div>
+                      <p className="text-xs text-white/50 truncate">Demo seat booking & instant invoice download</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={18} className="text-white/30 group-hover:text-white shrink-0 ml-2" />
+                </button>
               </div>
             </motion.div>
           </div>
@@ -1123,6 +1523,51 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUr
             }}
           />
         )}
+
+        {/* Fake Booking Modals */}
+        {activeModal === 'fake_disclaimer' && (
+          <FakeBookingDisclaimerModal 
+            onClose={() => setActiveModal('none')}
+            onSelectInvoice1={() => setActiveModal('fake_form_1')}
+            onSelectInvoice2={() => setActiveModal('fake_form_2')}
+          />
+        )}
+        {activeModal === 'fake_form_1' && (
+          <FakeInvoice1FormModal 
+            defaultCounselor={activeMember?.name || user?.name || 'Unity Counselor'}
+            onClose={() => setActiveModal('none')}
+            onBack={() => setActiveModal('fake_disclaimer')}
+            onSubmit={(data) => {
+              setFakeInvoice1Data(data);
+              setActiveModal('fake_invoice_1');
+            }}
+          />
+        )}
+        {activeModal === 'fake_form_2' && (
+          <FakeInvoice2FormModal 
+            defaultCounselor={activeMember?.name || user?.name || 'Unity Counselor'}
+            onClose={() => setActiveModal('none')}
+            onBack={() => setActiveModal('fake_disclaimer')}
+            onSubmit={(data) => {
+              setFakeInvoice2Data(data);
+              setActiveModal('fake_invoice_2');
+            }}
+          />
+        )}
+        {activeModal === 'fake_invoice_1' && fakeInvoice1Data && (
+          <FakeInvoice1Modal 
+            data={fakeInvoice1Data}
+            onClose={() => setActiveModal('none')}
+            onBackToOptions={() => setActiveModal('fake_disclaimer')}
+          />
+        )}
+        {activeModal === 'fake_invoice_2' && fakeInvoice2Data && (
+          <FakeInvoice2Modal 
+            data={fakeInvoice2Data}
+            onClose={() => setActiveModal('none')}
+            onBackToOptions={() => setActiveModal('fake_disclaimer')}
+          />
+        )}
       </AnimatePresence>
     </motion.div>
   );
@@ -1145,8 +1590,11 @@ function SureShotPreBookingModal({
   onSuccessSubmitted: (req: RequestData) => void;
   onOpenHistory: () => void;
 }) {
+  const [step, setStep] = useState<'conditions' | 'form'>('conditions');
+  const [candidateName, setCandidateName] = useState('');
+  const [candidateNumber, setCandidateNumber] = useState('');
+  const [formError, setFormError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showConfirmPopup, setShowConfirmPopup] = useState(false);
 
   // Count existing sure shot requests for this member to calculate sequence
   const existingMemberSureShots = history.filter(r => 
@@ -1156,7 +1604,32 @@ function SureShotPreBookingModal({
   );
   const sequenceNumber = existingMemberSureShots.length + 1;
 
-  const handleFinalSubmit = async () => {
+  const handleProceedToForm = () => {
+    setFormError('');
+    setStep('form');
+  };
+
+  const handleFinalSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setFormError('');
+
+    const trimmedName = candidateName.trim();
+    const trimmedNumber = candidateNumber.trim();
+
+    if (!trimmedName) {
+      setFormError('অনুগ্রহ করে যার সিওর শট হবে তার নাম লিখুন');
+      return;
+    }
+    if (!trimmedNumber) {
+      setFormError('অনুগ্রহ করে যার সিওর শট হবে তার নাম্বার দিন');
+      return;
+    }
+    const cleanPhone = trimmedNumber.replace(/\D/g, '');
+    if (cleanPhone.length < 11) {
+      setFormError('অনুগ্রহ করে সঠিক ১১ ডিজিটের মোবাইল নাম্বার দিন');
+      return;
+    }
+
     setLoading(true);
 
     const generatedRef = `SSB-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -1168,8 +1641,9 @@ function SureShotPreBookingModal({
         refId: generatedRef,
         type: 'sure_shot',
         senderId: sender?.uid || 'guest',
-        senderName: sender?.name || member.name,
-        senderNumber: member.number || '',
+        senderName: trimmedName,
+        whatsappNumber: trimmedNumber,
+        senderNumber: trimmedNumber,
         senderRole: sender?.role || 'user',
         recipientName: member.name,
         recipientNumber: member.number || '',
@@ -1179,7 +1653,7 @@ function SureShotPreBookingModal({
         createdAt: serverTimestamp(),
         expiresAt: expiresAtDate,
         submittedByUid: member.id,
-        note: `Sure Shot Pre-Booking #${sequenceNumber}`
+        note: `Sure Shot for ${trimmedName} (${trimmedNumber})`
       });
 
       saveMySubmittedRequestId(docRef.id);
@@ -1189,8 +1663,9 @@ function SureShotPreBookingModal({
         refId: generatedRef,
         type: 'sure_shot',
         senderId: sender?.uid || 'guest',
-        senderName: sender?.name || member.name,
-        senderNumber: member.number || '',
+        senderName: trimmedName,
+        whatsappNumber: trimmedNumber,
+        senderNumber: trimmedNumber,
         senderRole: sender?.role || 'user',
         recipientName: member.name,
         recipientNumber: member.number || '',
@@ -1200,10 +1675,9 @@ function SureShotPreBookingModal({
         createdAt: now,
         expiresAt: expiresAtDate,
         submittedByUid: member.id,
-        note: `Sure Shot Pre-Booking #${sequenceNumber}`
+        note: `Sure Shot for ${trimmedName} (${trimmedNumber})`
       };
 
-      setShowConfirmPopup(false);
       onSuccessSubmitted(createdReq);
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'requests');
@@ -1218,7 +1692,7 @@ function SureShotPreBookingModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 overflow-y-auto">
       <motion.div 
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        onClick={onClose}
+        onClick={() => !loading && onClose()}
         className="fixed inset-0 bg-black/85 backdrop-blur-md" 
       />
       <motion.div 
@@ -1228,140 +1702,189 @@ function SureShotPreBookingModal({
         {/* Amber-Orange Top Glow bar */}
         <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-500 via-orange-500 to-yellow-400" />
 
-        {/* Member Header Card */}
-        <div className="flex items-center justify-between pb-3 border-b border-white/10 pt-1">
-          <div className="flex items-center gap-3">
-            <MemberDesignBadge name={member.name} role={member.role} size="md" />
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[9px] uppercase font-black text-amber-400 tracking-wider">
-                  {isLeader ? 'টিম লিডার' : 'টিম ট্রেইনার'}
-                </span>
-                <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  বুকিং #{sequenceNumber}
-                </span>
-              </div>
-              <h3 className="text-base font-extrabold text-white">{member.name}</h3>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 text-white/40 hover:text-white rounded-lg transition-colors">
-            <XCircle size={20} />
-          </button>
-        </div>
-
-        {/* Red Highlighted Warning Box */}
-        <div className="bg-gradient-to-r from-rose-950/90 via-red-950/80 to-rose-950/90 border-2 border-rose-500 rounded-2xl p-4 text-center space-y-2 shadow-[0_0_25px_rgba(244,63,94,0.3)]">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/25 text-rose-300 border border-rose-500/50 text-[10px] font-black uppercase tracking-wider animate-pulse">
-            <AlertTriangle size={13} className="text-rose-400" />
-            ⚠️ জরুরি সতর্কবার্তা ও নিয়মাবলী
-          </div>
-          <h2 className="text-sm font-black text-white">
-            শিউরশট প্রি-বুকিং করার <span className="text-rose-400 underline decoration-2">কমপক্ষে ২০ মিনিট পর</span> পেমেন্ট করাতে হবে
-          </h2>
-          <div className="bg-rose-900/60 border border-rose-500/40 rounded-xl p-2 text-xs font-black text-rose-200">
-            এর আগে পেমেন্ট করালে শিউরশট হবে না!
-          </div>
-          <p className="text-[11px] font-semibold text-rose-200/90 leading-relaxed">
-            প্রি-বুকিংয়ের মেয়াদ থাকবে মোট ৬ ঘণ্টা। ৬ ঘণ্টা পর অটোমেটিক্যালি এটি ডিসেবল/বাতিল হয়ে যাবে।
-          </p>
-        </div>
-
-        {/* Confirmation Guideline Box */}
-        <div className="bg-[#121622] border border-amber-500/30 rounded-2xl p-3.5 text-center space-y-1.5">
-          <p className="text-xs font-bold text-amber-200 leading-snug">
-            নিচে থাকা <strong className="text-white underline font-extrabold">কনফার্ম প্রি-বুকিং বাটনে</strong> ক্লিক করলে সিট বুকিং নিশ্চিতকরণ পপআপ আসবে।
-          </p>
-          <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold text-amber-400">
-            <Clock size={12} />
-            <span>নিশ্চিত করার সাথে সাথে ৬ ঘণ্টার কাউন্টডাউন টাইমার চালু হবে</span>
-          </div>
-        </div>
-
-        {/* Action Button */}
-        <div className="space-y-3 pt-1">
-          <button 
-            type="button"
-            onClick={() => setShowConfirmPopup(true)}
-            className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:opacity-95 text-black font-black text-xs tracking-wider uppercase rounded-xl shadow-lg shadow-orange-500/25 transition-all flex items-center justify-center gap-2 active:scale-98"
-          >
-            <CheckCircle2 size={16} />
-            কনফার্ম প্রি-বুকিং (Confirm Pre-Booking)
-          </button>
-        </div>
-
-        {/* View History Button */}
-        <button
-          type="button"
-          onClick={onOpenHistory}
-          className="w-full py-2.5 bg-[#141724] hover:bg-[#1c2133] text-white/70 hover:text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 border border-white/5"
-        >
-          <HistoryIcon size={14} /> My History (পূর্বের বুকিং ইতিহাস দেখুন)
-        </button>
-
-        {/* Secondary Confirmation Popup Modal */}
-        <AnimatePresence>
-          {showConfirmPopup && (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-              <motion.div 
-                initial={{ opacity: 0 }} 
-                animate={{ opacity: 1 }} 
-                exit={{ opacity: 0 }}
-                onClick={() => !loading && setShowConfirmPopup(false)}
-                className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-              />
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                className="relative w-full max-w-xs bg-[#111420] border-2 border-amber-500/60 rounded-3xl p-5 shadow-[0_0_35px_rgba(245,158,11,0.35)] z-10 text-center space-y-4"
-              >
-                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/25">
-                  <CheckCircle2 size={24} />
-                </div>
-
-                <div className="space-y-1.5">
-                  <h3 className="text-base font-black text-white">সিট বুকিং নিশ্চিতকরণ</h3>
-                  <p className="text-xs text-amber-200 font-bold leading-relaxed">
-                    সিট বুকিং নিশ্চিত করতে কনফার্ম বাটনে আবার ক্লিক করতে হবে।
-                  </p>
-                  <div className="pt-1">
-                    <span className="text-[11px] font-bold text-white/80 bg-white/5 px-2.5 py-1 rounded-lg border border-white/10 inline-block">
-                      {member.name} • বুকিং #{sequenceNumber}
+        {/* STEP 1: Conditions & Rules */}
+        {step === 'conditions' && (
+          <>
+            {/* Member Header Card */}
+            <div className="flex items-center justify-between pb-3 border-b border-white/10 pt-1">
+              <div className="flex items-center gap-3">
+                <MemberDesignBadge name={member.name} role={member.role} size="md" />
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] uppercase font-black text-amber-400 tracking-wider">
+                      {isLeader ? 'টিম লিডার' : 'টিম ট্রেইনার'}
+                    </span>
+                    <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      বুকিং #{sequenceNumber}
                     </span>
                   </div>
+                  <h3 className="text-base font-extrabold text-white">{member.name}</h3>
                 </div>
-
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => setShowConfirmPopup(false)}
-                    className="py-2.5 bg-[#1a1f30] hover:bg-[#232a40] text-white/70 hover:text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50"
-                  >
-                    বাতিল (Cancel)
-                  </button>
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={handleFinalSubmit}
-                    className="py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:opacity-95 text-black font-black text-xs rounded-xl shadow-lg shadow-orange-500/25 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
-                  >
-                    {loading ? (
-                      <>
-                        <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                        প্রসেসিং...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 size={14} /> কনফার্ম করুন
-                      </>
-                    )}
-                  </button>
-                </div>
-              </motion.div>
+              </div>
+              <button onClick={onClose} className="p-1.5 text-white/40 hover:text-white rounded-lg transition-colors">
+                <XCircle size={20} />
+              </button>
             </div>
-          )}
-        </AnimatePresence>
+
+            {/* Red Highlighted Warning Box */}
+            <div className="bg-gradient-to-r from-rose-950/90 via-red-950/80 to-rose-950/90 border-2 border-rose-500 rounded-2xl p-4 text-center space-y-2 shadow-[0_0_25px_rgba(244,63,94,0.3)]">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/25 text-rose-300 border border-rose-500/50 text-[10px] font-black uppercase tracking-wider animate-pulse">
+                <AlertTriangle size={13} className="text-rose-400" />
+                ⚠️ জরুরি সতর্কবার্তা ও নিয়মাবলী
+              </div>
+              <h2 className="text-sm font-black text-white">
+                শিউরশট প্রি-বুকিং করার <span className="text-rose-400 underline decoration-2">কমপক্ষে ২০ মিনিট পর</span> পেমেন্ট করাতে হবে
+              </h2>
+              <div className="bg-rose-900/60 border border-rose-500/40 rounded-xl p-2 text-xs font-black text-rose-200">
+                এর আগে পেমেন্ট করালে শিউরশট হবে না!
+              </div>
+              <p className="text-[11px] font-semibold text-rose-200/90 leading-relaxed">
+                প্রি-বুকিংয়ের মেয়াদ থাকবে মোট ৬ ঘণ্টা। ৬ ঘণ্টা পর অটোমেটিক্যালি এটি ডিসেবল/বাতিল হয়ে যাবে।
+              </p>
+            </div>
+
+            {/* Confirmation Guideline Box */}
+            <div className="bg-[#121622] border border-amber-500/30 rounded-2xl p-3.5 text-center space-y-1.5">
+              <p className="text-xs font-bold text-amber-200 leading-snug">
+                নিচে থাকা <strong className="text-white underline font-extrabold">কনফার্ম প্রি-বুকিং বাটনে</strong> ক্লিক করে যার সিওর শট হবে তার তথ্য ফর্মটি পূরণ করুন।
+              </p>
+              <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold text-amber-400">
+                <Clock size={12} />
+                <span>ফর্ম সাবমিটের সাথে সাথে ৬ ঘণ্টার কাউন্টডাউন টাইমার চালু হবে</span>
+              </div>
+            </div>
+
+            {/* Action Button */}
+            <div className="space-y-3 pt-1">
+              <button 
+                type="button"
+                onClick={handleProceedToForm}
+                className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:opacity-95 text-black font-black text-xs tracking-wider uppercase rounded-xl shadow-lg shadow-orange-500/25 transition-all flex items-center justify-center gap-2 active:scale-98"
+              >
+                <CheckCircle2 size={16} />
+                কনফার্ম প্রি-বুকিং (Confirm Pre-Booking)
+              </button>
+            </div>
+
+            {/* View History Button */}
+            <button
+              type="button"
+              onClick={onOpenHistory}
+              className="w-full py-2.5 bg-[#141724] hover:bg-[#1c2133] text-white/70 hover:text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 border border-white/5"
+            >
+              <HistoryIcon size={14} /> My History (পূর্বের বুকিং ইতিহাস দেখুন)
+            </button>
+          </>
+        )}
+
+        {/* STEP 2: Candidate Information Form */}
+        {step === 'form' && (
+          <div className="space-y-3.5">
+            {/* Form Header */}
+            <div className="flex items-center justify-between pb-2.5 border-b border-white/10 pt-1">
+              <button 
+                type="button"
+                onClick={() => setStep('conditions')}
+                className="p-1.5 text-white/50 hover:text-white rounded-lg transition-colors flex items-center gap-1 text-xs"
+                title="শর্তাবলী দেখুন"
+              >
+                <ArrowLeft size={16} />
+                <span>শর্তাবলী</span>
+              </button>
+              <div className="text-center">
+                <h3 className="text-sm font-extrabold text-white">প্রার্থীর তথ্য ফর্ম</h3>
+                <p className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Sure Shot Candidate</p>
+              </div>
+              <button onClick={onClose} className="p-1.5 text-white/40 hover:text-white rounded-lg transition-colors">
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            {/* Assigned Member Info Strip */}
+            <div className="bg-[#121622] px-3 py-2 rounded-xl border border-white/5 flex items-center justify-between text-xs text-white/70">
+              <span className="truncate">লিডার/ট্রেইনার: <strong className="text-white">{member.name}</strong></span>
+              <span className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0 ml-2">
+                বুকিং #{sequenceNumber}
+              </span>
+            </div>
+
+            {/* Candidate Form - Only Name and Number */}
+            <form onSubmit={handleFinalSubmit} className="space-y-3.5">
+              {/* Field 1: Candidate Name */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <UserIcon size={14} className="text-amber-400" />
+                  <span>যার সিওর শট হবে তার নাম <span className="text-rose-400">*</span></span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={candidateName}
+                  onChange={(e) => setCandidateName(e.target.value)}
+                  placeholder="যেমন: মো: তানভীর আহমেদ / Tanvir Ahmed"
+                  className="w-full bg-[#121622] border border-white/10 focus:border-amber-500 rounded-xl py-3 px-3 text-xs sm:text-sm text-white placeholder:text-white/30 focus:outline-none transition-colors"
+                />
+              </div>
+
+              {/* Field 2: Candidate Number */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Smartphone size={14} className="text-emerald-400" />
+                  <span>যার সিওর শট হবে তার নাম্বার <span className="text-rose-400">*</span></span>
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={candidateNumber}
+                  onChange={(e) => setCandidateNumber(e.target.value)}
+                  placeholder="যেমন: 017XXXXXXXX"
+                  className="w-full bg-[#121622] border border-white/10 focus:border-amber-500 rounded-xl py-3 px-3 text-xs sm:text-sm text-white placeholder:text-white/30 focus:outline-none transition-colors font-mono"
+                />
+              </div>
+
+              {/* Error Message */}
+              {formError && (
+                <div className="bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-bold py-2 px-3 rounded-xl flex items-center gap-1.5">
+                  <AlertTriangle size={14} className="shrink-0 text-rose-400" />
+                  <span>{formError}</span>
+                </div>
+              )}
+
+              {/* Short Note */}
+              <p className="text-[10px] text-center text-amber-200/80 font-medium">
+                * তথ্য সাবমিট করার সাথে সাথে ইনভয়েস পাবেন এবং ৬ ঘণ্টার কাউন্টডাউন শুরু হবে
+              </p>
+
+              {/* Action Buttons */}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => setStep('conditions')}
+                  className="py-3 bg-[#1a1f30] hover:bg-[#232a40] text-white/70 hover:text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+                >
+                  বাতিল (Back)
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="py-3 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:opacity-95 text-black font-black text-xs rounded-xl shadow-lg shadow-orange-500/25 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 active:scale-98"
+                >
+                  {loading ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                      প্রসেসিং...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={15} /> কনফার্ম প্রি-বুকিং
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </motion.div>
     </div>
   );
@@ -1393,7 +1916,7 @@ function SureShotInvoiceModal({
       const dataUrl = await toPng(receiptRef.current, {
         cacheBust: true,
         pixelRatio: 2,
-        backgroundColor: '#0a0d18',
+        backgroundColor: '#ffffff',
       });
       const link = document.createElement('a');
       link.href = dataUrl;
@@ -1422,24 +1945,24 @@ function SureShotInvoiceModal({
           initial={{ scale: 0.9, opacity: 0 }} 
           animate={{ scale: 1, opacity: 1 }} 
           exit={{ scale: 0.9, opacity: 0 }}
-          className="w-full bg-[#0a0d18] rounded-3xl p-5 border border-amber-500/40 shadow-2xl flex flex-col gap-3 relative overflow-hidden"
+          className="w-full bg-white rounded-3xl p-5 sm:p-6 border-2 border-slate-200/90 shadow-2xl flex flex-col gap-3 relative overflow-hidden text-left text-slate-900"
         >
-          {/* Top Gold Gradient Glow Bar */}
-          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-500 via-orange-500 to-yellow-400" />
+          {/* Top Corporate Gradient Bar */}
+          <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-600 via-sky-500 to-emerald-500" />
 
           {/* Header Bar */}
-          <div className="flex items-center justify-between pb-3 border-b border-white/10 pt-1">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200 pt-1">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-black flex items-center justify-center shadow-md shadow-orange-500/20 shrink-0 font-black">
-                <Zap size={20} className="text-black" />
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-md shrink-0 font-black">
+                <Zap size={20} className="text-white" />
               </div>
               <div>
-                <h2 className="text-base font-black text-white tracking-wider">UNITY EARNING</h2>
-                <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Sure Shot Pre-Booking</p>
+                <h2 className="text-base font-black text-slate-900 tracking-wider">UNITY EARNING</h2>
+                <p className="text-[10px] font-extrabold text-blue-700 uppercase tracking-wider">Sure Shot Pre-Booking</p>
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              <span className="text-[10px] font-black px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
                 #{booking.bookingSequence || 1}
               </span>
               <Badge status={booking.status || 'pending'} />
@@ -1447,9 +1970,9 @@ function SureShotInvoiceModal({
           </div>
 
           {/* Clean 6-Hour Countdown Timer */}
-          <div className="bg-[#121622] rounded-2xl p-3 border border-white/10 flex items-center justify-between">
-            <span className="text-xs font-bold text-white/70 flex items-center gap-1.5">
-              <Clock size={15} className="text-amber-400" />
+          <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200 flex items-center justify-between shadow-sm">
+            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <Clock size={15} className="text-blue-600" />
               সময়সীমা (Time Left):
             </span>
             <CountdownTimer 
@@ -1460,23 +1983,33 @@ function SureShotInvoiceModal({
           </div>
 
           {/* Invoice Details */}
-          <div className="bg-[#121622] rounded-2xl p-3.5 border border-white/10 space-y-2.5 text-xs">
-            <div className="flex justify-between items-center pb-2 border-b border-white/5">
-              <span className="text-white/40 text-[11px] uppercase font-bold tracking-wider">Booking ID</span>
-              <span className="font-mono font-bold text-amber-300 text-xs">{refId}</span>
+          <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200 space-y-2.5 text-xs shadow-sm">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+              <span className="text-slate-500 text-[11px] uppercase font-bold tracking-wider">Booking ID</span>
+              <span className="font-mono font-black text-blue-700 text-xs">{refId}</span>
             </div>
-            <div className="flex justify-between items-center pb-2 border-b border-white/5">
-              <span className="text-white/40 text-[11px] uppercase font-bold tracking-wider">Team Member</span>
-              <span className="font-bold text-white text-xs">{booking.recipientName || 'N/A'}</span>
+            <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+              <span className="text-slate-500 text-[11px] uppercase font-bold tracking-wider">প্রার্থীর নাম (Candidate)</span>
+              <span className="font-black text-slate-900 text-xs">{booking.senderName || 'N/A'}</span>
+            </div>
+            {(booking.whatsappNumber || booking.senderNumber) && (
+              <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                <span className="text-slate-500 text-[11px] uppercase font-bold tracking-wider">প্রার্থীর নাম্বার (Number)</span>
+                <span className="font-mono font-bold text-slate-900 text-xs">{booking.whatsappNumber || booking.senderNumber}</span>
+              </div>
+            )}
+            <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+              <span className="text-slate-500 text-[11px] uppercase font-bold tracking-wider">লিডার/ট্রেইনার (Assigned)</span>
+              <span className="font-bold text-slate-900 text-xs">{booking.recipientName || 'N/A'}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-white/40 text-[11px] uppercase font-bold tracking-wider">Issue Time</span>
-              <span className="font-semibold text-white/80 text-[11px]">{issueDate}</span>
+              <span className="text-slate-500 text-[11px] uppercase font-bold tracking-wider">Issue Time</span>
+              <span className="font-semibold text-slate-700 text-[11px]">{issueDate}</span>
             </div>
           </div>
 
           {/* Concise Footer Note */}
-          <p className="text-[10px] text-center text-amber-300/80 font-medium pt-0.5">
+          <p className="text-[10px] text-center text-slate-500 font-medium pt-0.5">
             * প্রি-বুকিংয়ের ২০ মিনিট পর পেমেন্ট গ্রহণ করা হবে • মেয়াদ ৬ ঘণ্টা
           </p>
         </motion.div>
@@ -1604,7 +2137,7 @@ function InvoiceReceiptModal({
       const dataUrl = await toPng(receiptRef.current, {
         cacheBust: true,
         pixelRatio: 2,
-        backgroundColor: '#090d18',
+        backgroundColor: '#ffffff',
       });
       const link = document.createElement('a');
       link.href = dataUrl;
@@ -1633,20 +2166,20 @@ function InvoiceReceiptModal({
           initial={{ scale: 0.9, opacity: 0 }} 
           animate={{ scale: 1, opacity: 1 }} 
           exit={{ scale: 0.9, opacity: 0 }}
-          className="w-full bg-[#090d18] rounded-3xl p-5 border-2 border-cyan-500/40 shadow-[0_0_35px_rgba(6,182,212,0.2)] flex flex-col gap-3.5 relative overflow-hidden"
+          className="w-full bg-white rounded-3xl p-5 sm:p-6 border-2 border-slate-200/90 shadow-2xl flex flex-col gap-3.5 relative overflow-hidden text-left text-slate-900"
         >
-          {/* Glow Accent Top */}
-          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-emerald-400" />
+          {/* Multi-Color Accent Stripe Top */}
+          <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-600 via-sky-500 to-emerald-500" />
 
           {/* Receipt Header Bar */}
-          <div className="flex items-center justify-between pb-3 border-b border-white/10 pt-1">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200 pt-1">
             <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500 via-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-cyan-500/20 shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 via-sky-500 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
                 <Shield size={22} />
               </div>
               <div>
-                <h2 className="text-base font-black text-white tracking-wider">UNITY EARNING</h2>
-                <p className="text-[9px] font-extrabold text-cyan-400 tracking-widest uppercase">— SEAT BOOKING RECEIPT —</p>
+                <h2 className="text-base font-black text-slate-900 tracking-wider">UNITY EARNING</h2>
+                <p className="text-[9px] font-extrabold text-blue-700 tracking-widest uppercase">— SEAT BOOKING RECEIPT —</p>
               </div>
             </div>
             <Badge status={booking.status || 'pending'} />
@@ -1655,81 +2188,81 @@ function InvoiceReceiptModal({
           {/* Invoice Grid Details */}
           <div className="grid grid-cols-2 gap-2.5">
             {/* REF ID */}
-            <div className="bg-[#121826] border border-white/10 rounded-2xl p-3">
-              <p className="text-[9px] font-bold uppercase text-white/40 tracking-wider">REF ID</p>
-              <p className="text-xs font-black text-cyan-300 font-mono mt-0.5">{refId}</p>
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 shadow-sm">
+              <p className="text-[9px] font-bold uppercase text-slate-500 tracking-wider">REF ID</p>
+              <p className="text-xs font-black text-blue-700 font-mono mt-0.5">{refId}</p>
             </div>
 
             {/* ISSUE DATE */}
-            <div className="bg-[#121826] border border-white/10 rounded-2xl p-3 flex justify-between items-center">
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 flex justify-between items-center shadow-sm">
               <div>
-                <p className="text-[9px] font-bold uppercase text-white/40 tracking-wider">ISSUE DATE</p>
-                <p className="text-xs font-bold text-white mt-0.5">{issueDate}</p>
+                <p className="text-[9px] font-bold uppercase text-slate-500 tracking-wider">ISSUE DATE</p>
+                <p className="text-xs font-bold text-slate-900 mt-0.5">{issueDate}</p>
               </div>
-              <Calendar size={16} className="text-cyan-400/50" />
+              <Calendar size={16} className="text-blue-600/70" />
             </div>
           </div>
 
           {/* CANDIDATE */}
-          <div className="bg-[#121826] border border-white/10 rounded-2xl p-3 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/30">
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 flex items-center gap-3 shadow-sm">
+            <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200">
               <UserIcon size={16} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[9px] font-bold uppercase text-white/40 tracking-wider">CANDIDATE (আবেদনকারী)</p>
-              <p className="text-sm font-black text-white truncate">{booking.senderName || 'N/A'}</p>
+              <p className="text-[9px] font-bold uppercase text-slate-500 tracking-wider">CANDIDATE (আবেদনকারী)</p>
+              <p className="text-sm font-black text-slate-900 truncate">{booking.senderName || 'N/A'}</p>
             </div>
           </div>
 
           {/* COUNSELOR */}
-          <div className="bg-[#121826] border border-white/10 rounded-2xl p-3 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0 border border-cyan-500/30">
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 flex items-center gap-3 shadow-sm">
+            <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
               <Send size={16} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[9px] font-bold uppercase text-white/40 tracking-wider">COUNSELOR / LEADER (কাউন্সেলর)</p>
-              <p className="text-sm font-black text-white truncate">{booking.recipientName || 'N/A'}</p>
+              <p className="text-[9px] font-bold uppercase text-slate-500 tracking-wider">COUNSELOR / LEADER (কাউন্সেলর)</p>
+              <p className="text-sm font-black text-slate-900 truncate">{booking.recipientName || 'N/A'}</p>
             </div>
           </div>
 
           {/* FEE & PAYMENT TRX */}
           <div className="grid grid-cols-2 gap-2.5">
-            <div className="bg-[#121826] border border-white/10 rounded-2xl p-3">
-              <p className="text-[9px] font-bold uppercase text-white/40 tracking-wider">FEE (ফি)</p>
-              <p className="text-lg font-black text-emerald-400 font-mono mt-0.5">৳{booking.amount}</p>
+            <div className="bg-emerald-50/70 border-2 border-emerald-300 rounded-2xl p-3 shadow-sm">
+              <p className="text-[9px] font-bold uppercase text-emerald-800 tracking-wider">FEE (ফি)</p>
+              <p className="text-xl font-black text-emerald-600 font-mono mt-0.5">৳{booking.amount}</p>
             </div>
 
-            <div className="bg-[#121826] border border-white/10 rounded-2xl p-3">
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 shadow-sm">
               <div className="flex justify-between items-center">
-                <p className="text-[9px] font-bold uppercase text-white/40 tracking-wider">{booking.paymentMethod || 'BKASH'}</p>
-                <span className="text-[8px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">VERIFIED</span>
+                <p className="text-[9px] font-bold uppercase text-slate-600 tracking-wider">{booking.paymentMethod || 'BKASH'}</p>
+                <span className="text-[8px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-300">VERIFIED</span>
               </div>
-              <p className="text-xs font-extrabold text-white font-mono truncate mt-0.5">
-                TRX: <span className="text-cyan-300">{booking.trxDigit || 'N/A'}</span>
+              <p className="text-xs font-extrabold text-slate-900 font-mono truncate mt-0.5">
+                TRX: <span className="text-blue-700">{booking.trxDigit || 'N/A'}</span>
               </p>
             </div>
           </div>
 
           {/* PHONE / WHATSAPP */}
-          <div className="bg-[#121826] border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 flex items-center justify-between shadow-sm">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/30">
+              <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200">
                 <Smartphone size={16} />
               </div>
               <div className="min-w-0">
-                <p className="text-[9px] font-bold uppercase text-white/40 tracking-wider">WHATSAPP / PHONE</p>
-                <p className="text-xs font-black text-white font-mono truncate">{booking.whatsappNumber || booking.senderNumber || 'N/A'}</p>
+                <p className="text-[9px] font-bold uppercase text-slate-500 tracking-wider">WHATSAPP / PHONE</p>
+                <p className="text-xs font-black text-slate-900 font-mono truncate">{booking.whatsappNumber || booking.senderNumber || 'N/A'}</p>
               </div>
             </div>
-            <span className="text-[8px] font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20 shrink-0">SAFE</span>
+            <span className="text-[8px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full border border-blue-200 shrink-0">SAFE</span>
           </div>
 
           {/* Bottom Receipt Stamp */}
-          <div className="border-t border-dashed border-white/15 pt-3 pb-1 flex items-center justify-between text-[10px] text-white/50">
-            <div className="flex items-center gap-1.5 text-cyan-400 font-bold">
+          <div className="border-t border-dashed border-slate-200 pt-3 pb-1 flex items-center justify-between text-[10px] text-slate-500">
+            <div className="flex items-center gap-1.5 text-blue-700 font-bold">
               <CheckCircle2 size={14} /> OFFICIAL DIGITAL RECEIPT
             </div>
-            <span className="font-mono text-[9px] text-white/40">UNITY EARNING PLATFORM</span>
+            <span className="font-mono text-[9px] text-slate-400">UNITY EARNING PLATFORM</span>
           </div>
         </motion.div>
 
@@ -1765,6 +2298,1079 @@ function InvoiceReceiptModal({
             )}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// --- FAKE / DEMO SEAT BOOKING MODALS (ZERO FIRESTORE / IN-MEMORY ONLY) ---
+// ============================================================================
+
+// Helper: SVG Barcode for ultra-crisp screenshot rendering
+function BarcodeSVG({ value, dark = true }: { value: string; dark?: boolean }) {
+  const bars = [3, 1, 2, 1, 4, 1, 2, 3, 1, 2, 4, 1, 1, 3, 2, 1, 3, 1, 2, 4, 1, 2, 3, 1, 2, 1, 4, 2, 1, 3, 1, 2, 3, 1, 4, 1, 2, 3, 1, 2];
+  return (
+    <div className="flex flex-col items-center">
+      <div className={`flex items-center gap-[2px] h-6 px-2 ${dark ? 'bg-slate-100 rounded' : 'bg-white/5 rounded'} py-0.5`}>
+        {bars.map((w, i) => (
+          <div
+            key={i}
+            className={`h-full ${i % 2 === 0 ? (dark ? 'bg-slate-900' : 'bg-white/80') : 'bg-transparent'}`}
+            style={{ width: `${w}px` }}
+          />
+        ))}
+      </div>
+      <span className={`text-[8px] font-mono tracking-widest ${dark ? 'text-slate-600' : 'text-white/50'} mt-0.5`}>{value}</span>
+    </div>
+  );
+}
+
+// Helper: SVG QR Code for crisp offline capture
+function QRCodeSVG({ color = '#0f172a', bgColor = '#ffffff', size = 68 }: { color?: string; bgColor?: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0 drop-shadow-sm">
+      <rect width="64" height="64" rx="8" fill={bgColor} stroke={color} strokeOpacity="0.25" strokeWidth="1.2" />
+      {/* Top Left Finder Pattern */}
+      <rect x="7" y="7" width="16" height="16" rx="2" stroke={color} strokeWidth="2" fill="none" />
+      <rect x="11" y="11" width="8" height="8" rx="1" fill={color} />
+      {/* Top Right Finder Pattern */}
+      <rect x="41" y="7" width="16" height="16" rx="2" stroke={color} strokeWidth="2" fill="none" />
+      <rect x="45" y="11" width="8" height="8" rx="1" fill={color} />
+      {/* Bottom Left Finder Pattern */}
+      <rect x="7" y="41" width="16" height="16" rx="2" stroke={color} strokeWidth="2" fill="none" />
+      <rect x="11" y="45" width="8" height="8" rx="1" fill={color} />
+      {/* Data dots matrix */}
+      <rect x="27" y="9" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="33" y="9" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="27" y="15" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="33" y="18" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="9" y="27" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="15" y="31" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="21" y="27" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="27" y="27" width="4" height="4" rx="1" fill={color} />
+      <rect x="35" y="27" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="43" y="27" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="51" y="27" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="27" y="35" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="33" y="35" width="4" height="4" rx="1" fill={color} />
+      <rect x="41" y="35" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="49" y="35" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="27" y="43" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="33" y="47" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="41" y="43" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="47" y="47" width="3" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="43" y="51" width="4" height="4" rx="1" fill={color} />
+      <rect x="51" y="43" width="3" height="3" fill={color} fillOpacity="0.85" />
+    </svg>
+  );
+}
+
+// Helper: Circular Official Seal Graphic (White, Blue, Green & Slate)
+function OfficialSealSVG({ text = "OFFICIAL REGISTRAR SEAL", color = "#0284c7" }: { text?: string; color?: string }) {
+  return (
+    <svg width="60" height="60" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0 opacity-95">
+      <circle cx="40" cy="40" r="37" stroke={color} strokeWidth="1.8" strokeDasharray="3 2" />
+      <circle cx="40" cy="40" r="32" stroke={color} strokeWidth="1" strokeOpacity="0.7" />
+      <circle cx="40" cy="40" r="23" stroke="#059669" strokeWidth="1.2" />
+      <polygon points="40,27 43,35 51,35 44,40 47,48 40,43 33,48 36,40 29,35 37,35" fill="#059669" fillOpacity="0.85" />
+    </svg>
+  );
+}
+
+// Helper: Official Security Verified Crest (White, Black, Blue & Green - NO "VIP SEAL" text)
+function OfficialVerifiedSealSVG({ onWhite = true }: { onWhite?: boolean }) {
+  return (
+    <div className="relative w-13 h-13 rounded-full bg-gradient-to-br from-emerald-500 via-blue-500 to-indigo-600 p-[1.5px] shadow-md shadow-emerald-500/20 flex items-center justify-center shrink-0">
+      <div className={`w-full h-full rounded-full ${onWhite ? 'bg-white border border-emerald-500/30' : 'bg-[#060c18] border border-emerald-400/30'} flex flex-col items-center justify-center p-1`}>
+        <ShieldCheck size={20} className="text-emerald-600" />
+        <span className={`text-[6.5px] tracking-widest uppercase font-black ${onWhite ? 'text-slate-800' : 'text-cyan-300'} leading-none mt-0.5`}>VERIFIED</span>
+      </div>
+    </div>
+  );
+}
+
+// 1. Fake Booking Disclaimer & Selection Notice Modal (White, Black, Blue, Green Palette)
+function FakeBookingDisclaimerModal({
+  onClose,
+  onSelectInvoice1,
+  onSelectInvoice2
+}: {
+  onClose: () => void;
+  onSelectInvoice1: () => void;
+  onSelectInvoice2: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 overflow-y-auto">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/85 backdrop-blur-md" />
+      
+      <motion.div 
+        initial={{ scale: 0.92, opacity: 0 }} 
+        animate={{ scale: 1, opacity: 1 }} 
+        exit={{ scale: 0.92, opacity: 0 }}
+        className="relative w-full max-w-md bg-[#070b14] rounded-3xl p-5 sm:p-6 border-2 border-cyan-500/40 shadow-[0_0_35px_rgba(6,182,212,0.2)] flex flex-col gap-4 z-10 my-auto text-left"
+      >
+        <button onClick={onClose} className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors">
+          <XCircle size={22} />
+        </button>
+
+        {/* Header in English as requested */}
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 via-cyan-500 to-emerald-500 text-white flex items-center justify-center shadow-lg shadow-cyan-600/30 shrink-0">
+            <Sparkles size={24} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base sm:text-lg font-black text-white">Fake Seat Book</h3>
+              <span className="text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 px-1.5 py-0.5 rounded font-extrabold uppercase">DEMO</span>
+            </div>
+            <p className="text-xs text-white/60">ডেমো সিট বুকিং ও তাৎক্ষণিক ইনভয়েস তৈরি</p>
+          </div>
+        </div>
+
+        {/* Disclaimer & Rules Box (Full Bengali Rules - Crisp White, Black, Blue & Green) */}
+        <div className="bg-[#0b1220] border border-cyan-500/30 rounded-2xl p-4 space-y-2.5 text-xs text-white shadow-inner">
+          <div className="flex items-center gap-2 text-cyan-300 font-extrabold text-xs">
+            <ShieldCheck size={16} className="text-cyan-400 shrink-0" />
+            <span>জরুরি সতর্কতা ও নির্দেশিকা (Rules & Disclaimer):</span>
+          </div>
+
+          <p className="leading-relaxed text-white/95 font-medium">
+            এই সিট বুকিংটি সম্পূর্ণ <strong className="text-cyan-300 font-black">ফেইক / ডেমো</strong>। কোনো লিডকে কনভিন্স করার জন্য চাইলে ফেইক সিট বুক করে তাকে আকর্ষণীয় ইনভয়েসের স্ক্রিনশট দিতে পারেন।
+          </p>
+
+          <div className="pt-2 border-t border-white/10 space-y-2 text-[11px] text-white/80">
+            <div className="flex items-start gap-2 text-emerald-300">
+              <CheckCircle2 size={15} className="text-emerald-400 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-white">১০০% নিরাপদ ও গোপনীয়:</strong> এই স্ক্রিনশট বা বুকিং কোনো রেকর্ডে স্থায়ীভাবে যুক্ত হবে না এবং অ্যাডমিনের কাছে কোনো প্রকার রিকোয়েস্ট বা নোটিফিকেশন যাবে না।
+              </span>
+            </div>
+
+            <div className="flex items-start gap-2 text-cyan-200">
+              <Info size={15} className="text-cyan-400 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-white">টাকার পরিমাণের নিয়ম:</strong> ফর্মটিতে টাকার পরিমাণ লিখলে ইনভয়েসের মধ্যে টাকার পরিমাণ শো করবে। আর যদি টাকার পরিমাণ না লেখেন, তাহলে ইনভয়েসের মধ্যে কোনো প্রকার টাকার পরিমাণ শো করবে না (অফিসিয়াল ফ্রি সিট কনফার্মেশন হিসেবে দেখাবে)।
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Selection Options Header in Bengali */}
+        <p className="text-xs font-bold text-white/90 pt-1">
+          পছন্দ অনুযায়ী নিচের যেকোনো একটি ইনভয়েস ডিজাইন বেছে নিন:
+        </p>
+
+        {/* Two Options (Invoice 1 & Invoice 2) in Bengali */}
+        <div className="space-y-2.5">
+          {/* Option 1: Seat Booking Invoice 1 (Blue / Cyan Theme) */}
+          <button
+            onClick={onSelectInvoice1}
+            className="w-full p-4 bg-gradient-to-r from-blue-950/50 via-[#0a1426] to-cyan-950/50 hover:from-blue-900/60 hover:to-cyan-900/60 border border-cyan-500/40 hover:border-cyan-400 rounded-2xl text-left flex items-center justify-between group transition-all shadow-md shadow-cyan-950/40 active:scale-98"
+          >
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center border border-cyan-500/30 shrink-0">
+                <FileText size={20} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-extrabold text-white text-sm group-hover:text-cyan-300 transition-colors">সিট বুকিং ইনভয়েস ওয়ান</h4>
+                  <span className="text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-1.5 py-0.5 rounded font-bold">টাকা ঐচ্ছিক</span>
+                </div>
+                <p className="text-[11px] text-white/60 truncate mt-0.5">টাকা দেওয়া যাবে বা টাকা ছাড়াও করা যাবে। অফিসিয়াল ক্যাশ মেমো ও ডিজিটাল রিসিট ডিজাইন।</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="text-white/40 group-hover:text-white shrink-0 ml-2" />
+          </button>
+
+          {/* Option 2: Seat Booking Invoice 2 (Emerald Green / Blue Theme - No Yellow!) */}
+          <button
+            onClick={onSelectInvoice2}
+            className="w-full p-4 bg-gradient-to-r from-emerald-950/50 via-[#06161c] to-teal-950/50 hover:from-emerald-900/60 hover:to-teal-900/60 border border-emerald-500/40 hover:border-emerald-400 rounded-2xl text-left flex items-center justify-between group transition-all shadow-md shadow-emerald-950/40 active:scale-98"
+          >
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center border border-emerald-500/30 shrink-0">
+                <Award size={20} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-extrabold text-white text-sm group-hover:text-emerald-300 transition-colors">সিট বুকিং ইনভয়েস টু</h4>
+                  <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded font-bold">টাকা ছাড়া - এক্সক্লুসিভ</span>
+                </div>
+                <p className="text-[11px] text-white/60 truncate mt-0.5">কোনো টাকার পরিমাণ ও মিটিং কোড থাকবে না। নাম, নাম্বার, বুকিং আইডি ও বুকিং নং সমৃদ্ধ প্রিমিয়াম কার্ড।</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="text-white/40 group-hover:text-white shrink-0 ml-2" />
+          </button>
+        </div>
+
+        {/* Close Button in Bengali */}
+        <button
+          onClick={onClose}
+          className="w-full py-3 bg-[#131926] hover:bg-[#1a2336] border border-white/10 text-white/80 hover:text-white rounded-xl text-xs font-bold transition-all text-center mt-1"
+        >
+          বন্ধ করুন (Close)
+        </button>
+      </motion.div>
+    </div>
+  );
+}
+
+// 2. Fake Invoice 1 Form Modal (Optional Amount - Rules & Labels in Bengali)
+function FakeInvoice1FormModal({
+  defaultCounselor,
+  onClose,
+  onBack,
+  onSubmit
+}: {
+  defaultCounselor: string;
+  onClose: () => void;
+  onBack: () => void;
+  onSubmit: (data: FakeInvoice1Data) => void;
+}) {
+  const [candidateName, setCandidateName] = useState('');
+  const [candidateNumber, setCandidateNumber] = useState('');
+  const [amount, setAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('BKASH');
+  const [senderNumber, setSenderNumber] = useState('');
+  const [trxId, setTrxId] = useState(`TRX${Math.floor(100000 + Math.random() * 900000)}`);
+  const [meetingCode, setMeetingCode] = useState('');
+  const [bookingNo, setBookingNo] = useState(`BK-${Math.floor(1000 + Math.random() * 9000)}`);
+  const [refId, setRefId] = useState(`#SB-${Math.floor(10000 + Math.random() * 90000)}`);
+  const [counselorName, setCounselorName] = useState(defaultCounselor || 'Unity Official Leader');
+  const [formError, setFormError] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!candidateName.trim() || !candidateNumber.trim()) {
+      setFormError('অনুগ্রহ করে প্রার্থীর নাম এবং মোবাইল নাম্বার লিখুন।');
+      return;
+    }
+    const now = new Date();
+    const dateFormatted = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    onSubmit({
+      candidateName: candidateName.trim(),
+      candidateNumber: candidateNumber.trim(),
+      counselorName: counselorName.trim() || defaultCounselor || 'Unity Leader',
+      bookingNo,
+      refId,
+      paymentMethod,
+      senderNumber: senderNumber.trim() || candidateNumber.trim(),
+      trxId: trxId.trim() || `TRX${Math.floor(100000 + Math.random() * 900000)}`,
+      amount: amount.trim(),
+      meetingCode: meetingCode.trim(),
+      date: dateFormatted
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 overflow-y-auto">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/85 backdrop-blur-md" />
+      
+      <motion.div 
+        initial={{ scale: 0.92, opacity: 0 }} 
+        animate={{ scale: 1, opacity: 1 }} 
+        exit={{ scale: 0.92, opacity: 0 }}
+        className="relative w-full max-w-md bg-[#070b14] rounded-3xl p-5 sm:p-6 border-2 border-cyan-500/40 shadow-[0_0_35px_rgba(6,182,212,0.2)] flex flex-col gap-4 z-10 my-auto text-left"
+      >
+        <button onClick={onClose} className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors">
+          <XCircle size={22} />
+        </button>
+
+        {/* Top Header in Bengali */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center justify-center shrink-0">
+            <FileText size={20} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-black text-white">সিট বুকিং ইনভয়েস ওয়ান - ফর্ম</h3>
+              <span className="text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-1.5 py-0.5 rounded font-bold">ডেমো</span>
+            </div>
+            <p className="text-xs text-white/50">তথ্য দিয়ে তাৎক্ষণিক ডিজিটাল ইনভয়েস রিসিট তৈরি করুন</p>
+          </div>
+        </div>
+
+        {/* Amount Policy Notice in Bengali */}
+        <div className="bg-[#0b1424] border border-cyan-500/30 rounded-xl p-3 text-[11px] text-cyan-100 flex items-start gap-2">
+          <Info size={16} className="text-cyan-400 shrink-0 mt-0.5" />
+          <p className="leading-relaxed">
+            <strong>টাকার পরিমাণ ঐচ্ছিক:</strong> টাকার পরিমাণ লিখলে ইনভয়েসে টাকা প্রদর্শিত হবে। আর ফাঁকা রাখলে কোনো প্রকার টাকা দেখাবে না (অফিসিয়াল ফ্রি সিট কনফার্মেশন হিসেবে দেখাবে)।
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {/* Candidate Name */}
+          <div>
+            <label className="block text-xs font-bold text-white/85 mb-1">
+              প্রার্থীর পুরো নাম (Candidate Name) <span className="text-rose-400">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={candidateName}
+              onChange={(e) => setCandidateName(e.target.value)}
+              placeholder="যেমন: আব্দুল্লাহ আল মামুন"
+              className="w-full bg-[#0e1424] border border-white/10 focus:border-cyan-500 rounded-xl py-2.5 px-3 text-xs sm:text-sm text-white placeholder:text-white/30 focus:outline-none transition-colors"
+            />
+          </div>
+
+          {/* Candidate Phone */}
+          <div>
+            <label className="block text-xs font-bold text-white/85 mb-1">
+              মোবাইল / হোয়াটসঅ্যাপ নম্বর (Phone / WhatsApp) <span className="text-rose-400">*</span>
+            </label>
+            <input
+              type="tel"
+              required
+              value={candidateNumber}
+              onChange={(e) => setCandidateNumber(e.target.value)}
+              placeholder="017XXXXXXXX"
+              className="w-full bg-[#0e1424] border border-white/10 focus:border-cyan-500 rounded-xl py-2.5 px-3 text-xs sm:text-sm text-white placeholder:text-white/30 focus:outline-none font-mono transition-colors"
+            />
+          </div>
+
+          {/* Amount (OPTIONAL) */}
+          <div className="bg-[#0e1424] border border-cyan-500/20 rounded-xl p-3 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-cyan-300">
+                টাকার পরিমাণ (ঐচ্ছিক - খালি রাখলে ফি দেখাবে না)
+              </label>
+              <span className="text-[10px] text-white/40">ঐচ্ছিক</span>
+            </div>
+            <div className="relative">
+              <span className="absolute left-3 top-2.5 text-xs font-bold text-emerald-400 font-mono">৳</span>
+              <input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="যেমন: ১৫০০ (টাকা ছাড়া রাখতে খালি রাখুন)"
+                className="w-full bg-[#070b14] border border-white/10 focus:border-emerald-500 rounded-lg py-2 pl-7 pr-3 text-xs sm:text-sm text-emerald-300 placeholder:text-white/30 focus:outline-none font-mono transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Payment Method & TrxID */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[11px] font-bold text-white/70 mb-1">পেমেন্ট মাধ্যম</label>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                className="w-full bg-[#0e1424] border border-white/10 focus:border-cyan-500 rounded-xl py-2 px-2 text-xs text-white focus:outline-none"
+              >
+                <option value="BKASH">bKash (বিকাশ)</option>
+                <option value="NAGAD">Nagad (নগদ)</option>
+                <option value="ROCKET">Rocket (রকেট)</option>
+                <option value="UPAY">Upay (উপায়)</option>
+                <option value="BANK">Bank Transfer (ব্যাংক)</option>
+                <option value="OFFICIAL">Official Free Seat</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-white/70 mb-1">ট্রানজেকশন আইডি (TrxID)</label>
+              <input
+                type="text"
+                value={trxId}
+                onChange={(e) => setTrxId(e.target.value)}
+                placeholder="TRX..."
+                className="w-full bg-[#0e1424] border border-white/10 focus:border-cyan-500 rounded-xl py-2 px-2.5 text-xs text-white font-mono placeholder:text-white/30 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Counselor Name & Meeting Code */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[11px] font-bold text-white/70 mb-1">কাউন্সেলর / লিডার</label>
+              <input
+                type="text"
+                value={counselorName}
+                onChange={(e) => setCounselorName(e.target.value)}
+                placeholder="লিডারের নাম"
+                className="w-full bg-[#0e1424] border border-white/10 focus:border-cyan-500 rounded-xl py-2 px-2.5 text-xs text-white placeholder:text-white/30 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-white/70 mb-1">মিটিং কোড (ঐচ্ছিক)</label>
+              <input
+                type="text"
+                value={meetingCode}
+                onChange={(e) => setMeetingCode(e.target.value)}
+                placeholder="যেমন: MEET-405"
+                className="w-full bg-[#0e1424] border border-white/10 focus:border-cyan-500 rounded-xl py-2 px-2.5 text-xs text-white font-mono placeholder:text-white/30 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {formError && (
+            <div className="bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-bold py-2 px-3 rounded-xl flex items-center gap-1.5">
+              <AlertTriangle size={14} className="shrink-0 text-rose-400" />
+              <span>{formError}</span>
+            </div>
+          )}
+
+          {/* Action Buttons in Bengali */}
+          <div className="grid grid-cols-2 gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onBack}
+              className="py-3 bg-[#131926] hover:bg-[#1a2336] text-white/70 hover:text-white rounded-xl text-xs font-bold transition-all"
+            >
+              ফিরে যান (Back)
+            </button>
+            <button
+              type="submit"
+              className="py-3 bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-500 hover:opacity-95 text-white font-black text-xs rounded-xl shadow-lg shadow-cyan-500/25 transition-all flex items-center justify-center gap-1.5 active:scale-98"
+            >
+              <FileText size={15} /> ইনভয়েস ১ তৈরি করুন
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
+
+// 3. Fake Invoice 2 Form Modal (Emerald Green, Blue, White & Black - No Yellow!)
+function FakeInvoice2FormModal({
+  defaultCounselor,
+  onClose,
+  onBack,
+  onSubmit
+}: {
+  defaultCounselor: string;
+  onClose: () => void;
+  onBack: () => void;
+  onSubmit: (data: FakeInvoice2Data) => void;
+}) {
+  const [candidateName, setCandidateName] = useState('');
+  const [candidateNumber, setCandidateNumber] = useState('');
+  const [seatBookingId, setSeatBookingId] = useState(`VIP-SB-${Math.floor(10000 + Math.random() * 90000)}`);
+  const [bookingNo, setBookingNo] = useState(`BK-${Math.floor(1000 + Math.random() * 9000)}`);
+  const [counselorName, setCounselorName] = useState(defaultCounselor || 'Unity Official Leader');
+  const [formError, setFormError] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!candidateName.trim() || !candidateNumber.trim()) {
+      setFormError('অনুগ্রহ করে প্রার্থীর নাম এবং মোবাইল নাম্বার লিখুন।');
+      return;
+    }
+    const now = new Date();
+    const dateFormatted = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    onSubmit({
+      candidateName: candidateName.trim(),
+      candidateNumber: candidateNumber.trim(),
+      seatBookingId: seatBookingId.trim(),
+      bookingNo: bookingNo.trim(),
+      counselorName: counselorName.trim() || defaultCounselor || 'Unity Leader',
+      date: dateFormatted
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 overflow-y-auto">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/85 backdrop-blur-md" />
+      
+      <motion.div 
+        initial={{ scale: 0.92, opacity: 0 }} 
+        animate={{ scale: 1, opacity: 1 }} 
+        exit={{ scale: 0.92, opacity: 0 }}
+        className="relative w-full max-w-md bg-[#070b14] rounded-3xl p-5 sm:p-6 border-2 border-emerald-500/40 shadow-[0_0_35px_rgba(16,185,129,0.2)] flex flex-col gap-4 z-10 my-auto text-left"
+      >
+        <button onClick={onClose} className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors">
+          <XCircle size={22} />
+        </button>
+
+        {/* Top Header */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
+            <Award size={20} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-black text-white">সিট বুকিং ইনভয়েস টু - ফর্ম</h3>
+              <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded font-bold">এক্সক্লুসিভ</span>
+            </div>
+            <p className="text-xs text-white/50">টাকা ও মিটিং নম্বর ছাড়া এক্সক্লুসিভ প্রিমিয়াম সিট কার্ড</p>
+          </div>
+        </div>
+
+        {/* Notice of Clean Invoice in Bengali */}
+        <div className="bg-[#09151e] border border-emerald-500/30 rounded-xl p-3 text-[11px] text-emerald-100 flex items-start gap-2">
+          <CheckCircle2 size={16} className="text-emerald-400 shrink-0 mt-0.5" />
+          <p className="leading-relaxed">
+            <strong>ইনভয়েস ২-এর নিয়ম:</strong> এই ইনভয়েসের মধ্যে কোনো প্রকার টাকার পরিমাণ এবং কোনো মিটিং কোড থাকবে না। শুধুমাত্র প্রার্থীর নাম, মোবাইল নম্বর, সিট বুকিং আইডি এবং বুকিং নম্বর দিয়ে একটি অফিসিয়াল ও প্রিমিয়াম কার্ড তৈরি হবে।
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3.5">
+          {/* Candidate Name */}
+          <div>
+            <label className="block text-xs font-bold text-white/85 mb-1">
+              প্রার্থীর নাম (Candidate Name) <span className="text-rose-400">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={candidateName}
+              onChange={(e) => setCandidateName(e.target.value)}
+              placeholder="যেমন: তানভীর হাসান"
+              className="w-full bg-[#0d1422] border border-white/10 focus:border-emerald-500 rounded-xl py-2.5 px-3 text-xs sm:text-sm text-white placeholder:text-white/30 focus:outline-none transition-colors"
+            />
+          </div>
+
+          {/* Candidate Phone */}
+          <div>
+            <label className="block text-xs font-bold text-white/85 mb-1">
+              মোবাইল / হোয়াটসঅ্যাপ নম্বর (Phone / WhatsApp) <span className="text-rose-400">*</span>
+            </label>
+            <input
+              type="tel"
+              required
+              value={candidateNumber}
+              onChange={(e) => setCandidateNumber(e.target.value)}
+              placeholder="018XXXXXXXX"
+              className="w-full bg-[#0d1422] border border-white/10 focus:border-emerald-500 rounded-xl py-2.5 px-3 text-xs sm:text-sm text-white placeholder:text-white/30 focus:outline-none font-mono transition-colors"
+            />
+          </div>
+
+          {/* Seat Booking ID & Booking No */}
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label className="block text-[11px] font-bold text-white/70 mb-1">সিট বুকিং আইডি</label>
+              <input
+                type="text"
+                value={seatBookingId}
+                onChange={(e) => setSeatBookingId(e.target.value)}
+                className="w-full bg-[#0d1422] border border-white/10 focus:border-emerald-500 rounded-xl py-2 px-2.5 text-xs text-emerald-300 font-mono focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-white/70 mb-1">বুকিং নম্বর (Booking No)</label>
+              <input
+                type="text"
+                value={bookingNo}
+                onChange={(e) => setBookingNo(e.target.value)}
+                className="w-full bg-[#0d1422] border border-white/10 focus:border-emerald-500 rounded-xl py-2 px-2.5 text-xs text-white font-mono focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Counselor Name */}
+          <div>
+            <label className="block text-[11px] font-bold text-white/70 mb-1">কাউন্সেলর / রেফারেন্স মেম্বার</label>
+            <input
+              type="text"
+              value={counselorName}
+              onChange={(e) => setCounselorName(e.target.value)}
+              placeholder="কাউন্সেলরের নাম"
+              className="w-full bg-[#0d1422] border border-white/10 focus:border-emerald-500 rounded-xl py-2 px-2.5 text-xs text-white focus:outline-none"
+            />
+          </div>
+
+          {formError && (
+            <div className="bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-bold py-2 px-3 rounded-xl flex items-center gap-1.5">
+              <AlertTriangle size={14} className="shrink-0 text-rose-400" />
+              <span>{formError}</span>
+            </div>
+          )}
+
+          {/* Action Buttons in Bengali */}
+          <div className="grid grid-cols-2 gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onBack}
+              className="py-3 bg-[#131926] hover:bg-[#1a2336] text-white/70 hover:text-white rounded-xl text-xs font-bold transition-all"
+            >
+              ফিরে যান (Back)
+            </button>
+            <button
+              type="submit"
+              className="py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-blue-600 hover:opacity-95 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-1.5 active:scale-98"
+            >
+              <Award size={15} /> ইনভয়েস ২ তৈরি করুন
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
+
+// 4. Fake Invoice 1 Modal (White, Black, Blue, Green Corporate Digital Fee & Seat Voucher)
+function FakeInvoice1Modal({
+  data,
+  onClose,
+  onBackToOptions
+}: {
+  data: FakeInvoice1Data;
+  onClose: () => void;
+  onBackToOptions: () => void;
+}) {
+  const receiptRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
+
+  const hasAmount = data.amount && data.amount.trim() !== '' && Number(data.amount) > 0;
+
+  const handleDownload = async () => {
+    if (!receiptRef.current) return;
+    setDownloading(true);
+    try {
+      const dataUrl = await toPng(receiptRef.current, {
+        cacheBust: true,
+        pixelRatio: 2.5,
+        backgroundColor: '#ffffff',
+      });
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `Seat_Booking_Invoice1_${data.bookingNo.replace(/[^a-zA-Z0-9]/g, '_')}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setDownloadSuccess(true);
+      setTimeout(() => setDownloadSuccess(false), 3000);
+    } catch (err) {
+      console.error('Failed to capture receipt:', err);
+      window.print();
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 overflow-y-auto">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/85 backdrop-blur-md" />
+      
+      <div className="relative w-full max-w-sm z-10 my-auto flex flex-col gap-3">
+        {/* Visual Capture Receipt Container (Corporate White Background, Black Text, Blue/Green Accents) */}
+        <motion.div 
+          ref={receiptRef}
+          initial={{ scale: 0.9, opacity: 0 }} 
+          animate={{ scale: 1, opacity: 1 }} 
+          exit={{ scale: 0.9, opacity: 0 }}
+          className="w-full bg-white rounded-3xl p-5 sm:p-6 border-2 border-slate-200/90 shadow-2xl flex flex-col gap-3.5 relative overflow-hidden text-left text-slate-900"
+        >
+          {/* Top Multi-Color Corporate Stripe (Blue -> Cyan -> Emerald) */}
+          <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-600 via-sky-500 to-emerald-500" />
+
+          {/* Official Enterprise Header */}
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200 pt-1">
+            <div className="flex items-center gap-2.5">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-600 via-sky-500 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+                <Shield size={24} />
+              </div>
+              <div>
+                <h2 className="text-base font-black text-slate-900 tracking-wider flex items-center gap-1.5">
+                  UNITY EARNING
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping inline-block" />
+                </h2>
+                <p className="text-[9px] font-extrabold text-blue-700 tracking-widest uppercase">
+                  OFFICIAL SEAT ALLOCATION RECEIPT
+                </p>
+              </div>
+            </div>
+            <div className="text-right flex flex-col items-end">
+              <span className="text-[9px] font-black text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm flex items-center gap-1">
+                <CheckCircle2 size={11} className="text-emerald-600" /> CONFIRMED
+              </span>
+              <span className="text-[8px] font-mono text-slate-400 mt-1">VERIFIED REGISTRATION</span>
+            </div>
+          </div>
+
+          {/* Barcode & Reference Tag Row */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 flex items-center justify-between shadow-sm">
+            <div className="space-y-0.5">
+              <p className="text-[8px] font-black uppercase text-blue-700 tracking-wider">BOOKING SERIAL</p>
+              <p className="text-xs font-mono font-black text-slate-900 tracking-wide">{data.bookingNo}</p>
+            </div>
+            <BarcodeSVG value={data.refId} dark={true} />
+          </div>
+
+          {/* Booking ID & Issue Date Grid */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5">
+              <p className="text-[8px] font-bold uppercase text-slate-500 tracking-wider">REF / BOOKING ID</p>
+              <p className="text-xs font-black text-blue-700 font-mono mt-0.5">{data.refId}</p>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 flex justify-between items-center">
+              <div>
+                <p className="text-[8px] font-bold uppercase text-slate-500 tracking-wider">ISSUE DATE & TIME</p>
+                <p className="text-[11px] font-bold text-slate-900 mt-0.5">{data.date}</p>
+              </div>
+              <Calendar size={16} className="text-blue-600/70 shrink-0" />
+            </div>
+          </div>
+
+          {/* Candidate Profile Details Card */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-2 shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200">
+                  <UserIcon size={14} />
+                </div>
+                <div>
+                  <p className="text-[8px] font-bold uppercase text-slate-500 tracking-wider">CANDIDATE (প্রার্থী)</p>
+                  <p className="text-sm font-black text-slate-900 leading-tight">{data.candidateName}</p>
+                </div>
+              </div>
+              <span className="text-[8px] font-black uppercase bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 rounded-md">
+                ADMITTED
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-0.5 text-xs">
+              <div className="flex items-center gap-1.5">
+                <Smartphone size={13} className="text-blue-600 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[8px] text-slate-500 uppercase font-semibold">WHATSAPP / PHONE</p>
+                  <p className="text-[11px] font-mono font-bold text-slate-900 truncate">{data.candidateNumber}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <Send size={13} className="text-emerald-600 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[8px] text-slate-500 uppercase font-semibold">COUNSELOR</p>
+                  <p className="text-[11px] font-bold text-slate-900 truncate">{data.counselorName}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Financial Breakdown Section (Conditional on Amount - Green Highlight on White) */}
+          {hasAmount ? (
+            <div className="bg-emerald-50/70 border-2 border-emerald-300 rounded-2xl p-3 space-y-2 shadow-sm">
+              <div className="flex items-center justify-between text-[9px] font-bold uppercase text-slate-600 border-b border-emerald-200 pb-1.5">
+                <span>RESERVATION & ADMISSION FEE</span>
+                <span className="text-emerald-700 font-black">STATUS: PAID</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[9px] text-slate-600 uppercase font-mono">GATEWAY: <strong className="text-slate-900">{data.paymentMethod}</strong></p>
+                  <p className="text-xs font-mono text-blue-700 font-bold mt-0.5">TRX: {data.trxId}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[8px] font-bold uppercase text-emerald-800">TOTAL AMOUNT PAID</p>
+                  <p className="text-2xl font-black text-emerald-600 font-mono mt-0.5">৳{data.amount}</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-emerald-50/70 border border-emerald-300 rounded-2xl p-3 flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-300">
+                  <CheckCircle2 size={18} />
+                </div>
+                <div>
+                  <p className="text-[8px] font-black uppercase text-emerald-800 tracking-wider">SEAT ALLOCATION</p>
+                  <p className="text-xs font-bold text-slate-900 mt-0.5">Special Corporate Confirmed Pass</p>
+                </div>
+              </div>
+              <span className="text-[9px] font-black text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-lg">
+                FEE WAIVED
+              </span>
+            </div>
+          )}
+
+          {/* Meeting Code Badge if entered */}
+          {data.meetingCode && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-2 flex items-center justify-between text-xs font-mono">
+              <span className="text-blue-800 font-bold text-[10px]">AUTHORIZED SESSION CODE:</span>
+              <span className="font-black text-white bg-blue-600 px-2 py-0.5 rounded shadow-sm">
+                {data.meetingCode}
+              </span>
+            </div>
+          )}
+
+          {/* Security & Digital Signature Footer */}
+          <div className="border-t border-dashed border-slate-200 pt-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <QRCodeSVG color="#0f172a" bgColor="#ffffff" size={54} />
+              <div className="space-y-0.5">
+                <p className="text-[8px] font-black uppercase text-slate-900 tracking-widest">DIGITAL AUTHENTICITY</p>
+                <p className="text-[8px] text-slate-500 leading-tight">Scan QR code to verify seat confirmation in system</p>
+                <p className="text-[7px] text-slate-400 font-mono">SECURE HASH: {data.bookingNo}</p>
+              </div>
+            </div>
+
+            {/* Official Circular Seal */}
+            <div className="flex flex-col items-center shrink-0 pl-1">
+              <OfficialSealSVG color="#0284c7" />
+              <span className="text-[7px] font-bold text-blue-800 tracking-tighter uppercase mt-0.5">OFFICIAL SEAL</span>
+            </div>
+          </div>
+
+          {/* Anti-Fraud Disclaimer Stamp */}
+          <div className="text-center pt-1 border-t border-slate-100">
+            <p className="text-[7.5px] text-slate-400 tracking-wider uppercase font-semibold">
+              OFFICIAL DIGITAL SEAT RECEIPT • VALIDATED BY REGISTRAR OFFICE • NO MANUAL SIGNATURE NEEDED
+            </p>
+          </div>
+        </motion.div>
+
+        {/* Download Success Banner */}
+        {downloadSuccess && (
+          <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold py-2 px-3 rounded-xl text-center flex items-center justify-center gap-2">
+            <CheckCircle2 size={16} /> ইনভয়েস ১ সফলভাবে ডাউনলোড হয়েছে!
+          </motion.div>
+        )}
+
+        {/* Action Buttons in Bengali */}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={onClose}
+            className="py-3 bg-[#121826] hover:bg-[#1a2336] border border-white/10 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 active:scale-98"
+          >
+            <XCircle size={16} className="text-white/60" /> বন্ধ করুন (Close)
+          </button>
+          <button
+            onClick={handleDownload}
+            disabled={downloading}
+            className="py-3 bg-gradient-to-r from-blue-600 via-sky-500 to-emerald-500 hover:opacity-95 text-white font-black text-xs rounded-xl shadow-xl shadow-blue-500/30 transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50"
+          >
+            {downloading ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ডাউনলোড হচ্ছে...
+              </>
+            ) : (
+              <>
+                <Download size={16} /> ডাউনলোড রিসিট (PNG)
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Back to Options button */}
+        <button
+          onClick={onBackToOptions}
+          className="w-full py-2 bg-transparent hover:bg-white/5 text-white/50 hover:text-white/80 rounded-xl text-[11px] font-semibold transition-all text-center"
+        >
+          আরেকটি ফেক ইনভয়েস তৈরি করুন (Create Another)
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// 5. Fake Invoice 2 Modal (White, Black, Blue & Green Palette - NO Yellow, NO "VIP SEAL" text)
+function FakeInvoice2Modal({
+  data,
+  onClose,
+  onBackToOptions
+}: {
+  data: FakeInvoice2Data;
+  onClose: () => void;
+  onBackToOptions: () => void;
+}) {
+  const receiptRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
+
+  const handleDownload = async () => {
+    if (!receiptRef.current) return;
+    setDownloading(true);
+    try {
+      const dataUrl = await toPng(receiptRef.current, {
+        cacheBust: true,
+        pixelRatio: 2.5,
+        backgroundColor: '#ffffff',
+      });
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `Seat_Booking_Invoice2_${data.bookingNo.replace(/[^a-zA-Z0-9]/g, '_')}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setDownloadSuccess(true);
+      setTimeout(() => setDownloadSuccess(false), 3000);
+    } catch (err) {
+      console.error('Failed to capture invoice 2:', err);
+      window.print();
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 overflow-y-auto">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/85 backdrop-blur-md" />
+      
+      <div className="relative w-full max-w-sm z-10 my-auto flex flex-col gap-3">
+        {/* Luxury Executive Pass: Corporate White Background, Black Text, Emerald/Blue Accents (NO Yellow, NO Amount, NO Meeting Number) */}
+        <motion.div 
+          ref={receiptRef}
+          initial={{ scale: 0.9, opacity: 0 }} 
+          animate={{ scale: 1, opacity: 1 }} 
+          exit={{ scale: 0.9, opacity: 0 }}
+          className="w-full bg-white rounded-3xl p-5 sm:p-6 border-2 border-emerald-500/30 shadow-2xl flex flex-col gap-3.5 relative overflow-hidden text-left text-slate-900"
+        >
+          {/* Top Multi-Color Accent Stripe: Royal Blue to Emerald Green */}
+          <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-600 via-teal-500 to-emerald-500" />
+
+          {/* Inner Emerald Ornate Border */}
+          <div className="absolute inset-1.5 rounded-[22px] border border-emerald-100 pointer-events-none" />
+
+          {/* Official Emblem & Professional Header */}
+          <div className="flex flex-col items-center text-center pt-2 pb-2.5 border-b border-slate-200 relative">
+            <div className="w-13 h-13 rounded-2xl bg-gradient-to-br from-blue-600 via-teal-500 to-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 mb-2 p-2.5">
+              <ShieldCheck size={28} className="text-white drop-shadow-sm" />
+            </div>
+            
+            <h2 className="text-base font-black text-slate-900 tracking-wider uppercase">
+              UNITY EARNING PLATFORM
+            </h2>
+            <p className="text-[10px] font-black text-emerald-700 tracking-widest uppercase mt-0.5">
+              OFFICIAL SEAT ALLOCATION PASS
+            </p>
+
+            <div className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-300 px-3 py-0.5 rounded-full mt-2 shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+              <span className="text-[9px] font-black text-emerald-800 tracking-wider uppercase">
+                VERIFIED ADMISSION PASS
+              </span>
+            </div>
+          </div>
+
+          {/* Candidate Name Spotlight Card */}
+          <div className="bg-gradient-to-r from-blue-50/80 via-slate-50 to-emerald-50/80 border border-emerald-200/80 rounded-2xl p-3.5 text-center shadow-sm relative overflow-hidden">
+            <p className="text-[8px] font-black uppercase text-emerald-800 tracking-widest">THIS CERTIFIES OFFICIAL SEAT ALLOTMENT TO</p>
+            <h3 className="text-xl font-black text-slate-900 mt-1 tracking-tight">
+              {data.candidateName}
+            </h3>
+          </div>
+
+          {/* 4 Core Mandated Parameters in Symmetric 2x2 Grid:
+              1. Candidate Name / Phone
+              2. Phone Number
+              3. Seat Booking ID
+              4. Booking No
+              (NO Amount & NO Meeting Number)
+          */}
+          <div className="grid grid-cols-2 gap-2.5">
+            {/* 1. SEAT BOOKING ID */}
+            <div className="bg-slate-50 border border-blue-200 rounded-2xl p-3 shadow-sm">
+              <div className="flex items-center gap-1.5">
+                <ShieldCheck size={13} className="text-blue-600" />
+                <p className="text-[8px] font-black uppercase text-blue-700 tracking-wider">SEAT BOOKING ID</p>
+              </div>
+              <p className="text-xs font-black text-blue-900 font-mono mt-1 truncate">{data.seatBookingId}</p>
+            </div>
+
+            {/* 2. BOOKING NO */}
+            <div className="bg-slate-50 border border-emerald-200 rounded-2xl p-3 shadow-sm">
+              <div className="flex items-center gap-1.5">
+                <FileText size={13} className="text-emerald-600" />
+                <p className="text-[8px] font-black uppercase text-emerald-700 tracking-wider">BOOKING NO</p>
+              </div>
+              <p className="text-xs font-black text-slate-900 font-mono mt-1 truncate">{data.bookingNo}</p>
+            </div>
+
+            {/* 3. PHONE / WHATSAPP NUMBER */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 shadow-sm">
+              <div className="flex items-center gap-1.5">
+                <Smartphone size={13} className="text-blue-600" />
+                <p className="text-[8px] font-black uppercase text-slate-600 tracking-wider">PHONE / WHATSAPP</p>
+              </div>
+              <p className="text-xs font-bold text-slate-900 font-mono mt-1 truncate">{data.candidateNumber}</p>
+            </div>
+
+            {/* 4. COUNSELOR / REFERENCE */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 shadow-sm">
+              <div className="flex items-center gap-1.5">
+                <Send size={13} className="text-teal-600" />
+                <p className="text-[8px] font-black uppercase text-slate-600 tracking-wider">COUNSELOR</p>
+              </div>
+              <p className="text-xs font-bold text-slate-900 truncate mt-1">{data.counselorName}</p>
+            </div>
+          </div>
+
+          {/* Security & Verification Ribbon */}
+          <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-2">
+              <ShieldCheck size={18} className="text-emerald-600 shrink-0" />
+              <div>
+                <p className="text-[8px] font-black text-emerald-900 uppercase tracking-wider">REGISTRATION VERIFIED</p>
+                <p className="text-[9px] text-slate-600 font-mono">{data.date}</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-[9px] font-black text-white bg-emerald-600 px-2.5 py-0.5 rounded-full uppercase shadow-sm">
+                100% VALID SEAT
+              </span>
+            </div>
+          </div>
+
+          {/* Security Seal & QR Code Footer (NO "VIP SEAL" text) */}
+          <div className="pt-2 border-t border-dashed border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <QRCodeSVG color="#0f172a" bgColor="#ffffff" size={54} />
+              <div className="space-y-0.5">
+                <p className="text-[8px] font-black uppercase text-emerald-800 tracking-wider">OFFICIAL QR VERIFICATION</p>
+                <p className="text-[8px] text-slate-500">Exclusive Admission Card</p>
+                <p className="text-[7px] text-blue-700 font-mono">SEAT: {data.seatBookingId}</p>
+              </div>
+            </div>
+
+            {/* Official Security Crest (No VIP SEAL text) */}
+            <OfficialVerifiedSealSVG onWhite={true} />
+          </div>
+
+          {/* Bottom Security Tag */}
+          <div className="text-center pt-0.5 border-t border-slate-100 mt-1">
+            <p className="text-[7.5px] text-slate-400 uppercase tracking-widest font-semibold">
+              UNITY OFFICIAL SYSTEM • DIGITALLY VERIFIED SEAT CERTIFICATE
+            </p>
+          </div>
+        </motion.div>
+
+        {/* Download Success Banner */}
+        {downloadSuccess && (
+          <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold py-2 px-3 rounded-xl text-center flex items-center justify-center gap-2">
+            <CheckCircle2 size={16} /> ইনভয়েস ২ সফলভাবে ডাউনলোড হয়েছে!
+          </motion.div>
+        )}
+
+        {/* Action Buttons in Bengali */}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={onClose}
+            className="py-3 bg-[#121826] hover:bg-[#1a2336] border border-white/10 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 active:scale-98"
+          >
+            <XCircle size={16} className="text-white/60" /> বন্ধ করুন (Close)
+          </button>
+          <button
+            onClick={handleDownload}
+            disabled={downloading}
+            className="py-3 bg-gradient-to-r from-emerald-600 via-teal-500 to-blue-600 hover:opacity-95 text-white font-black text-xs rounded-xl shadow-xl shadow-emerald-500/30 transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50"
+          >
+            {downloading ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ডাউনলোড হচ্ছে...
+              </>
+            ) : (
+              <>
+                <Download size={16} /> ডাউনলোড ইনভয়েস ২ (PNG)
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Back to Options button */}
+        <button
+          onClick={onBackToOptions}
+          className="w-full py-2 bg-transparent hover:bg-white/5 text-white/50 hover:text-white/80 rounded-xl text-[11px] font-semibold transition-all text-center"
+        >
+          আরেকটি ফেক ইনভয়েস তৈরি করুন (Create Another)
+        </button>
       </div>
     </div>
   );
@@ -2361,6 +3967,19 @@ function HistoryModal({
                         {req.senderName || req.recipientName || 'Sure Shot Applicant'}
                       </h3>
                       
+                      {req.studentId && (
+                        <p className="text-xs text-amber-300 font-mono">
+                          <span className="text-white/40 font-sans font-medium">Student ID:</span> <strong>{req.studentId}</strong>
+                        </p>
+                      )}
+
+                      {(req.whatsappNumber || req.senderNumber) && (
+                        <p className="text-xs text-emerald-400 font-mono flex items-center gap-1">
+                          <Smartphone size={12} className="text-emerald-400 shrink-0" />
+                          <span>{req.whatsappNumber || req.senderNumber}</span>
+                        </p>
+                      )}
+
                       {req.senderName && req.recipientName && req.senderName !== req.recipientName && (
                         <p className="text-xs text-white/60">
                           Assigned: <span className="text-white/90 font-semibold">{req.recipientName}</span>
@@ -2580,6 +4199,8 @@ function AdminDashboard({
   const [showAddMember, setShowAddMember] = useState(false);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [memberTab, setMemberTab] = useState<'leader' | 'trainer'>('leader');
+  const [memberToDelete, setMemberToDelete] = useState<TeamMember | null>(null);
+  const [deletingMember, setDeletingMember] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -2713,16 +4334,11 @@ function AdminDashboard({
                     </button>
                     <button 
                       type="button"
-                      onClick={async (e) => {
+                      onClick={(e) => {
                         e.stopPropagation();
-                        if (!window.confirm("Delete this member?")) return;
-                        try {
-                          await deleteDoc(doc(db, 'teamMembers', member.id));
-                        } catch (err) {
-                          console.error(err);
-                        }
+                        setMemberToDelete(member);
                       }}
-                      className="p-2 flex items-center justify-center rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-all"
+                      className="p-2 flex items-center justify-center rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-all active:scale-95"
                       title="Delete Member"
                     >
                       <Trash2 size={16} />
@@ -2761,6 +4377,62 @@ function AdminDashboard({
             notifications={notifications} 
             onClose={() => setShowNotifications(false)} 
           />
+        )}
+        {memberToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }} 
+              animate={{ scale: 1, opacity: 1 }} 
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#18181b] border border-white/10 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
+                <Trash2 size={24} />
+              </div>
+              <div className="text-center space-y-1">
+                <h3 className="text-lg font-bold text-white">মেম্বার মুছে ফেলবেন?</h3>
+                <p className="text-xs text-white/60">
+                  আপনি কি নিশ্চিত যে <span className="text-white font-semibold">{memberToDelete.name}</span> ({memberToDelete.role === 'leader' ? 'Team Leader' : 'Trainer'}) কে তালিকা থেকে স্থায়ীভাবে ডিলিট করতে চান?
+                </p>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={deletingMember}
+                  onClick={() => setMemberToDelete(null)}
+                  className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-semibold text-xs transition-all"
+                >
+                  বাতিল (Cancel)
+                </button>
+                <button
+                  type="button"
+                  disabled={deletingMember}
+                  onClick={async () => {
+                    setDeletingMember(true);
+                    try {
+                      await deleteDoc(doc(db, 'teamMembers', memberToDelete.id));
+                      setMemberToDelete(null);
+                    } catch (err) {
+                      console.error('Delete member error:', err);
+                      handleFirestoreError(err, OperationType.DELETE, `teamMembers/${memberToDelete.id}`);
+                    } finally {
+                      setDeletingMember(false);
+                    }
+                  }}
+                  className="flex-1 py-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-rose-600/30"
+                >
+                  {deletingMember ? (
+                    <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Trash2 size={14} />
+                      ডিলিট করুন
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </motion.div>
@@ -2826,7 +4498,6 @@ function AdminSureShotView() {
   };
 
   const handleDeleteRequest = async (id: string) => {
-    if (!window.confirm(TRANSLATIONS.CONFIRM_DELETE)) return;
     try {
       await deleteDoc(doc(db, 'requests', id));
     } catch (err) {
@@ -2930,6 +4601,13 @@ function AdminSureShotView() {
                     {candidateName}
                   </h4>
                 </div>
+
+                {req.studentId && (
+                  <div className="flex items-center gap-1.5 text-xs text-amber-300 font-mono">
+                    <span className="text-white/40 font-sans font-medium">Student ID:</span>
+                    <strong className="bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/25">{req.studentId}</strong>
+                  </div>
+                )}
 
                 {assignedLeader && (
                   <p className="text-xs text-white/60">
@@ -3064,7 +4742,6 @@ function AdminRequestsView({ requestType }: { requestType: 'seat_booking' | 'wit
   };
 
   const handleDeleteRequest = async (id: string) => {
-    if (!window.confirm(TRANSLATIONS.CONFIRM_DELETE)) return;
     try {
       await deleteDoc(doc(db, 'requests', id));
     } catch (err) {
@@ -3074,16 +4751,12 @@ function AdminRequestsView({ requestType }: { requestType: 'seat_booking' | 'wit
 
   const handleClearCategoryRequests = async () => {
     const sectionName = requestType === 'seat_booking' ? 'Seat Booking (সিট বুকিং)' : 'Withdraw (উইথড্র)';
-    if (!window.confirm(`আপনি কি নিশ্চিত যে ${sectionName}-এর সকল রিকোয়েস্ট স্থায়ীভাবে মুছে ফেলতে চান? (Clear all ${sectionName} requests?)`)) return;
-    
     try {
       for (const req of requests) {
         await deleteDoc(doc(db, 'requests', req.id));
       }
-      alert(`${sectionName}-এর সমস্ত রিকোয়েস্ট সফলভাবে ক্লিয়ার করা হয়েছে!`);
     } catch (err) {
       console.error('Error clearing requests:', err);
-      alert('ক্লিয়ার করতে সমস্যা হয়েছে।');
     }
   };
 
@@ -3353,7 +5026,6 @@ function AdminSettingsView({ requests, initialLogoUrl }: { requests?: RequestDat
   };
 
   const handleRemoveLogo = async () => {
-    if (!window.confirm("ডিফল্ট লোগোতে ফিরে যেতে চান? (Reset to default logo?)")) return;
     setUploadingLogo(true);
     try {
       await setDoc(doc(db, 'settings', 'config'), { logoUrl: '' }, { merge: true });
@@ -3384,7 +5056,6 @@ function AdminSettingsView({ requests, initialLogoUrl }: { requests?: RequestDat
   };
 
   const handleClearAllHistory = async () => {
-    if (!window.confirm("Are you sure you want to clear ALL requests history for all users? This cannot be undone.")) return;
     setClearing(true);
     try {
       if (requests && requests.length > 0) {
@@ -3392,10 +5063,8 @@ function AdminSettingsView({ requests, initialLogoUrl }: { requests?: RequestDat
           await deleteDoc(doc(db, 'requests', req.id));
         }
       }
-      alert("All request history cleared successfully!");
     } catch (err) {
       console.error(err);
-      alert("Failed to clear history");
     } finally {
       setClearing(false);
     }
