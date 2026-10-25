@@ -482,16 +482,20 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-white selection:bg-indigo-500/30 font-sans overflow-x-hidden">
+    <div className={`bg-[#09090b] text-white selection:bg-indigo-500/30 font-sans ${
+      view === 'landing' 
+        ? 'fixed inset-0 h-[100dvh] w-screen overflow-hidden touch-none flex flex-col justify-between' 
+        : 'min-h-screen overflow-x-hidden'
+    }`}>
       {/* Background Atmosphere */}
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-indigo-500/10 blur-[150px] rounded-full" />
         <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-cyan-500/10 blur-[150px] rounded-full" />
       </div>
 
-      <div className={`relative z-10 max-w-md mx-auto flex flex-col ${
+      <div className={`relative z-10 max-w-md mx-auto flex flex-col w-full ${
         view === 'landing' 
-          ? 'h-[100dvh] h-screen overflow-hidden px-3 py-1.5 sm:py-2.5 touch-none justify-center' 
+          ? 'h-full max-h-[100dvh] overflow-hidden px-3 sm:px-4 pt-1 sm:pt-2 pb-2 justify-start gap-1 sm:gap-2' 
           : 'min-h-screen pt-6 px-4 pb-20'
       }`}>
         <AnimatePresence mode="wait">
@@ -636,39 +640,39 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="h-full w-full flex flex-col justify-center items-center select-none overflow-hidden max-h-full py-0.5 sm:py-1 relative gap-1.5 sm:gap-2.5 my-auto"
+      className="h-full w-full flex flex-col justify-start items-center select-none overflow-hidden max-h-full pt-0 pb-1 gap-1 sm:gap-1.5 relative"
     >
       {/* Ambient background glow */}
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-gradient-to-tr from-indigo-600/15 via-purple-600/15 to-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-gradient-to-tr from-indigo-600/15 via-purple-600/15 to-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Brand Header */}
-      <div className="text-center shrink-0 space-y-1 relative z-10">
+      <div className="text-center shrink-0 space-y-0.5 pt-0 relative z-10">
         <motion.div 
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: "spring", stiffness: 300, damping: 20 }}
-          className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-indigo-500/20 border border-white/20 overflow-hidden p-0.5"
+          className="w-11 h-11 sm:w-13 sm:h-13 bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-indigo-500/20 border border-white/20 overflow-hidden p-0.5 mb-0.5"
         >
           {appLogoUrl ? (
             <img src={appLogoUrl} alt="Unity Earning" className="w-full h-full object-cover rounded-xl" />
           ) : (
             <div className="w-full h-full rounded-xl bg-black/20 flex items-center justify-center">
-              <TrendingUp size={26} className="text-white" />
+              <TrendingUp size={24} className="text-white" />
             </div>
           )}
         </motion.div>
         <div>
-          <h1 className="text-lg sm:text-xl font-black tracking-tight text-white leading-tight">
+          <h1 className="text-base sm:text-lg font-black tracking-tight text-white leading-tight">
             UNITY EARNING
           </h1>
-          <p className="text-white/50 font-bold tracking-widest uppercase text-[9.5px] sm:text-[10.5px]">
+          <p className="text-white/50 font-bold tracking-widest uppercase text-[8.5px] sm:text-[9.5px]">
             Secure Access Portal
           </p>
         </div>
       </div>
 
       {/* Main Glassmorphic Login Card */}
-      <div className="relative w-full shrink-0 max-h-[520px] bg-[#12131a]/95 backdrop-blur-2xl rounded-2xl sm:rounded-3xl border border-white/10 p-3 sm:p-4 shadow-2xl z-10 overflow-hidden flex flex-col justify-between my-0">
+      <div className="relative w-full flex-1 max-h-[520px] sm:max-h-[580px] bg-[#12131a]/95 backdrop-blur-2xl rounded-2xl sm:rounded-3xl border border-white/10 p-3 sm:p-4 shadow-2xl z-10 overflow-hidden flex flex-col justify-between mt-0.5 mb-0">
         
         {/* Success Celebration Overlay (100% English) */}
         <AnimatePresence>
@@ -684,13 +688,13 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
                 initial={{ scale: 0.5, opacity: 0.8 }}
                 animate={{ scale: 2.3, opacity: 0 }}
                 transition={{ duration: 1.1, repeat: Infinity, ease: "easeOut" }}
-                className="absolute w-20 h-20 rounded-full border-2 border-emerald-500/40 pointer-events-none"
+                className="absolute w-24 h-24 rounded-full border-2 border-emerald-500/40 pointer-events-none"
               />
               <motion.div
                 initial={{ scale: 0.3, opacity: 1 }}
                 animate={{ scale: 1.8, opacity: 0 }}
                 transition={{ duration: 1.1, delay: 0.25, repeat: Infinity, ease: "easeOut" }}
-                className="absolute w-20 h-20 rounded-full bg-emerald-500/20 pointer-events-none"
+                className="absolute w-24 h-24 rounded-full bg-emerald-500/20 pointer-events-none"
               />
 
               {/* Bouncing Checkmark Badge */}
@@ -698,10 +702,10 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
                 initial={{ scale: 0, rotate: -40 }}
                 animate={{ scale: 1, rotate: 0 }}
                 transition={{ type: "spring", stiffness: 320, damping: 18 }}
-                className="w-16 h-16 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 p-0.5 shadow-[0_0_35px_rgba(16,185,129,0.55)] mb-3 flex items-center justify-center relative"
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 p-0.5 shadow-[0_0_35px_rgba(16,185,129,0.55)] mb-3 flex items-center justify-center relative"
               >
                 <div className="w-full h-full bg-[#0a1510] rounded-full flex items-center justify-center">
-                  <CheckCircle2 size={36} className="text-emerald-400 drop-shadow-[0_0_12px_rgba(52,211,153,0.9)]" />
+                  <CheckCircle2 size={38} className="text-emerald-400 drop-shadow-[0_0_12px_rgba(52,211,153,0.9)]" />
                 </div>
               </motion.div>
 
@@ -709,7 +713,7 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.15 }}
-                className="text-lg font-black text-white tracking-wide uppercase"
+                className="text-lg sm:text-xl font-black text-white tracking-wide uppercase"
               >
                 Verification Successful!
               </motion.h3>
@@ -718,13 +722,13 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.22 }}
-                className="text-[11px] text-emerald-400 font-medium mt-0.5 mb-4"
+                className="text-xs text-emerald-400 font-medium mt-1 mb-4"
               >
                 {loginMode === 'admin' ? 'Entering Admin Portal...' : 'Entering User Dashboard...'}
               </motion.p>
 
               {/* Progress Shimmer */}
-              <div className="w-40 h-1.5 bg-white/10 rounded-full overflow-hidden">
+              <div className="w-44 h-1.5 bg-white/10 rounded-full overflow-hidden">
                 <motion.div
                   initial={{ width: "0%" }}
                   animate={{ width: "100%" }}
@@ -737,18 +741,18 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
         </AnimatePresence>
 
         {/* Top Segmented Mode Switcher */}
-        <div className="flex p-0.5 sm:p-1 bg-black/50 border border-white/10 rounded-xl sm:rounded-2xl relative shrink-0 mb-1.5">
+        <div className="flex p-1 bg-black/50 border border-white/10 rounded-2xl relative shrink-0 mb-1.5 sm:mb-2">
           <button
             type="button"
             onClick={() => switchMode('user')}
-            className={`flex-1 py-1.5 sm:py-2 px-2.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1.5 relative z-10 ${
+            className={`flex-1 py-1.5 sm:py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 relative z-10 ${
               loginMode === 'user' ? 'text-white' : 'text-white/50 hover:text-white/80'
             }`}
           >
             {loginMode === 'user' && (
               <motion.div
                 layoutId="loginTabIndicator"
-                className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-indigo-500 rounded-lg sm:rounded-xl -z-10 shadow-md shadow-indigo-500/30"
+                className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-indigo-500 rounded-xl -z-10 shadow-md shadow-indigo-500/30"
                 transition={{ type: "spring", bounce: 0.15, duration: 0.35 }}
               />
             )}
@@ -759,14 +763,14 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
           <button
             type="button"
             onClick={() => switchMode('admin')}
-            className={`flex-1 py-1.5 sm:py-2 px-2.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1.5 relative z-10 ${
+            className={`flex-1 py-1.5 sm:py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 relative z-10 ${
               loginMode === 'admin' ? 'text-white' : 'text-white/50 hover:text-white/80'
             }`}
           >
             {loginMode === 'admin' && (
               <motion.div
                 layoutId="loginTabIndicator"
-                className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg sm:rounded-xl -z-10 shadow-md shadow-purple-500/30"
+                className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl -z-10 shadow-md shadow-purple-500/30"
                 transition={{ type: "spring", bounce: 0.15, duration: 0.35 }}
               />
             )}
@@ -776,12 +780,12 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
         </div>
 
         {/* PIN Entry Form */}
-        <form onSubmit={handleAuth} className="flex-1 flex flex-col justify-between gap-1">
+        <form onSubmit={handleAuth} className="flex-1 flex flex-col justify-between">
           <div className="text-center shrink-0">
             <h2 className="text-xs sm:text-sm font-extrabold text-white">
               {loginMode === 'admin' ? 'Admin Master PIN' : 'User Access PIN'}
             </h2>
-            <p className="text-[10px] sm:text-[10.5px] text-white/40 mt-0.5">
+            <p className="text-[10px] text-white/40 mt-0.5">
               {loginMode === 'admin' ? 'Enter 6-digit master passcode' : `Enter ${expectedLength}-digit PIN code`}
             </p>
           </div>
@@ -798,7 +802,7 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
               return (
                 <div
                   key={idx}
-                  className={`w-9 h-10 sm:w-10 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-200 border-2 ${
+                  className={`w-9 h-10 sm:w-11 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-200 border-2 ${
                     isSuccess
                       ? 'border-emerald-500 bg-emerald-500/15 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
                       : error
@@ -830,7 +834,7 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
           </motion.div>
 
           {/* Status Message */}
-          <div className="h-3.5 flex items-center justify-center shrink-0 my-0.5">
+          <div className="h-3.5 flex items-center justify-center shrink-0">
             {error ? (
               <motion.p 
                 initial={{ opacity: 0, y: -4 }}
@@ -848,7 +852,7 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
                 Correct PIN! Logging in...
               </motion.p>
             ) : (
-              <p className="text-white/30 text-[9.5px] sm:text-[10.5px] text-center font-medium">
+              <p className="text-white/30 text-[10px] text-center font-medium">
                 Enter code via keypad or keyboard
               </p>
             )}
@@ -862,7 +866,7 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
                 type="button" 
                 disabled={isSuccess}
                 onClick={() => handleKeypadPress(num.toString())} 
-                className="h-10 sm:h-11.5 bg-[#1c1f2e] hover:bg-[#272b3f] active:bg-indigo-600 active:scale-95 disabled:opacity-50 border-2 border-white/15 hover:border-white/30 rounded-xl font-black text-xl sm:text-2xl text-white transition-all flex items-center justify-center shadow-md select-none"
+                className="h-10 sm:h-12 bg-[#1c1f2e] hover:bg-[#272b3f] active:bg-indigo-600 active:scale-95 disabled:opacity-50 border border-white/15 hover:border-white/30 rounded-xl sm:rounded-2xl font-black text-xl sm:text-2xl text-white transition-all flex items-center justify-center shadow-md select-none"
               >
                 {num}
               </button>
@@ -872,7 +876,7 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
               type="button" 
               disabled={isSuccess || pin.length === 0}
               onClick={() => handleKeypadPress('clear')} 
-              className="h-10 sm:h-11.5 bg-[#171926] hover:bg-[#232738] active:scale-95 disabled:opacity-30 border-2 border-white/10 rounded-xl font-black text-[10.5px] sm:text-xs tracking-wider text-white/60 hover:text-white transition-all flex items-center justify-center select-none uppercase"
+              className="h-10 sm:h-12 bg-[#171926] hover:bg-[#232738] active:scale-95 disabled:opacity-30 border border-white/10 rounded-xl sm:rounded-2xl font-black text-[10px] sm:text-xs tracking-wider text-white/60 hover:text-white transition-all flex items-center justify-center select-none uppercase"
             >
               CLEAR
             </button>
@@ -881,7 +885,7 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
               type="button" 
               disabled={isSuccess}
               onClick={() => handleKeypadPress('0')} 
-              className="h-10 sm:h-11.5 bg-[#1c1f2e] hover:bg-[#272b3f] active:bg-indigo-600 active:scale-95 disabled:opacity-50 border-2 border-white/15 hover:border-white/30 rounded-xl font-black text-xl sm:text-2xl text-white transition-all flex items-center justify-center shadow-md select-none"
+              className="h-10 sm:h-12 bg-[#1c1f2e] hover:bg-[#272b3f] active:bg-indigo-600 active:scale-95 disabled:opacity-50 border border-white/15 hover:border-white/30 rounded-xl sm:rounded-2xl font-black text-xl sm:text-2xl text-white transition-all flex items-center justify-center shadow-md select-none"
             >
               0
             </button>
@@ -890,7 +894,7 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
               type="button" 
               disabled={isSuccess || pin.length === 0}
               onClick={() => handleKeypadPress('del')} 
-              className="h-10 sm:h-11.5 bg-[#171926] hover:bg-[#232738] active:scale-95 disabled:opacity-30 border-2 border-white/10 rounded-xl font-bold text-rose-400 hover:text-rose-300 transition-all flex items-center justify-center select-none"
+              className="h-10 sm:h-12 bg-[#171926] hover:bg-[#232738] active:scale-95 disabled:opacity-30 border border-white/10 rounded-xl sm:rounded-2xl font-bold text-rose-400 hover:text-rose-300 transition-all flex items-center justify-center select-none"
             >
               <Delete size={20} />
             </button>
@@ -900,11 +904,11 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
           <button 
             type="submit"
             disabled={!pin || isSuccess}
-            className={`w-full h-10 sm:h-11 rounded-xl font-black text-xs sm:text-sm uppercase tracking-wider text-white shadow-lg transition-all active:scale-98 flex justify-center items-center gap-2 select-none shrink-0 ${
+            className={`w-full h-10 sm:h-11 rounded-xl sm:rounded-2xl font-black text-xs uppercase tracking-wider text-white shadow-lg transition-all active:scale-98 flex justify-center items-center gap-1.5 select-none shrink-0 ${
               loginMode === 'admin'
                 ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-purple-600/30'
                 : 'bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 shadow-indigo-600/30'
-            } disabled:opacity-40 disabled:cursor-not-allowed mt-0.5`}
+            } disabled:opacity-40 disabled:cursor-not-allowed`}
           >
             <CheckCircle2 size={16} />
             <span>{loginMode === 'admin' ? 'Admin Login' : 'Login to Portal'}</span>
