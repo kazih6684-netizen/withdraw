@@ -40,6 +40,7 @@ export interface RequestData {
   bookingSequence?: number;
   submittedByUid?: string;
   counselorLeader?: string;
+  images?: string[];
 }
 
 export interface FakeInvoice1Data {

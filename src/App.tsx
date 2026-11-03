@@ -58,7 +58,9 @@ import {
   ArrowLeft,
   Award,
   Info,
-  CreditCard
+  CreditCard,
+  Eye,
+  Image as ImageIcon
 } from 'lucide-react';
 
 // --- Image Compression Helper ---
@@ -92,6 +94,47 @@ function compressAndConvertToBase64(file: File, maxWidth = 400, maxHeight = 400)
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
           resolve(canvas.toDataURL('image/png', 0.9));
+        } else {
+          resolve(event.target?.result as string);
+        }
+      };
+      img.onerror = (error) => reject(error);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+}
+
+// Compress candidate uploaded document / images (JPEG 850px max, 0.75 quality ~ 35KB each)
+function compressUploadedImage(file: File, maxWidth = 850, maxHeight = 850, quality = 0.75): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
         } else {
           resolve(event.target?.result as string);
         }
@@ -1593,8 +1636,11 @@ function SureShotPreBookingModal({
   const [step, setStep] = useState<'conditions' | 'form'>('conditions');
   const [candidateName, setCandidateName] = useState('');
   const [candidateNumber, setCandidateNumber] = useState('');
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [formError, setFormError] = useState('');
   const [loading, setLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Count existing sure shot requests for this member to calculate sequence
   const existingMemberSureShots = history.filter(r => 
@@ -1607,6 +1653,46 @@ function SureShotPreBookingModal({
   const handleProceedToForm = () => {
     setFormError('');
     setStep('form');
+  };
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const remainingSlots = 10 - uploadedImages.length;
+    if (remainingSlots <= 0) {
+      setFormError('সর্বোচ্চ ১০টি ছবি আপলোড করা যাবে');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    const filesToProcess = (Array.from(files) as File[]).slice(0, remainingSlots);
+    if (files.length > remainingSlots) {
+      setFormError('সর্বোচ্চ ১০টি ছবি রাখা যাবে। অতিরিক্ত ছবিগুলো বাদ দেওয়া হয়েছে');
+    } else {
+      setFormError('');
+    }
+
+    setUploadingImages(true);
+    try {
+      const newImages: string[] = [];
+      for (const file of filesToProcess) {
+        if (!file.type.startsWith('image/')) continue;
+        const compressed = await compressUploadedImage(file, 850, 850, 0.75);
+        newImages.push(compressed);
+      }
+      setUploadedImages(prev => [...prev, ...newImages].slice(0, 10));
+    } catch (err) {
+      console.error('Image upload failed:', err);
+      setFormError('ছবি আপলোড করতে সমস্যা হয়েছে, অনুগ্রহ করে পুনরায় চেষ্টা করুন');
+    } finally {
+      setUploadingImages(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveImage = (indexToRemove: number) => {
+    setUploadedImages(prev => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
   const handleFinalSubmit = async (e?: React.FormEvent) => {
@@ -1653,7 +1739,8 @@ function SureShotPreBookingModal({
         createdAt: serverTimestamp(),
         expiresAt: expiresAtDate,
         submittedByUid: member.id,
-        note: `Sure Shot for ${trimmedName} (${trimmedNumber})`
+        note: `Sure Shot for ${trimmedName} (${trimmedNumber})`,
+        images: uploadedImages
       });
 
       saveMySubmittedRequestId(docRef.id);
@@ -1675,7 +1762,8 @@ function SureShotPreBookingModal({
         createdAt: now,
         expiresAt: expiresAtDate,
         submittedByUid: member.id,
-        note: `Sure Shot for ${trimmedName} (${trimmedNumber})`
+        note: `Sure Shot for ${trimmedName} (${trimmedNumber})`,
+        images: uploadedImages
       };
 
       onSuccessSubmitted(createdReq);
@@ -1842,6 +1930,93 @@ function SureShotPreBookingModal({
                 />
               </div>
 
+              {/* Field 3: Image / Gallery Upload (Max 10) */}
+              <div className="space-y-2 pt-0.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <ImageIcon size={14} className="text-cyan-400" />
+                    <span>ছবি আপলোড (গ্যালারি থেকে)</span>
+                    <span className="text-[10px] text-white/50 font-normal">(ঐচ্ছিক)</span>
+                  </label>
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full transition-all ${
+                    uploadedImages.length > 0 
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' 
+                      : 'bg-white/5 text-white/40'
+                  }`}>
+                    {uploadedImages.length}/১০ টি
+                  </span>
+                </div>
+
+                {/* Hidden File Picker Input */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageChange}
+                  className="hidden"
+                />
+
+                {/* Primary Upload Button */}
+                {uploadedImages.length < 10 && (
+                  <button
+                    type="button"
+                    disabled={uploadingImages || loading}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full py-2.5 px-3 rounded-xl border border-dashed border-amber-500/40 hover:border-amber-400 bg-amber-500/5 hover:bg-amber-500/10 text-amber-300 transition-all flex items-center justify-center gap-2 group active:scale-98 disabled:opacity-50"
+                  >
+                    {uploadingImages ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                        <span className="text-xs font-bold">ছবি প্রসেস হচ্ছে...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload size={15} className="text-amber-400 group-hover:-translate-y-0.5 transition-transform" />
+                        <span className="text-xs font-bold">গ্যালারি থেকে ছবি সিলেক্ট করুন (সর্বোচ্চ ১০টি)</span>
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {/* Uploaded Images Previews Grid */}
+                {uploadedImages.length > 0 && (
+                  <div className="grid grid-cols-4 gap-2 pt-1 max-h-40 overflow-y-auto custom-scrollbar p-1.5 bg-black/40 rounded-xl border border-white/10">
+                    {uploadedImages.map((img, idx) => (
+                      <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border border-white/15 bg-[#161926]">
+                        <img 
+                          src={img} 
+                          alt={`Upload preview ${idx + 1}`} 
+                          className="w-full h-full object-cover" 
+                        />
+                        <span className="absolute bottom-0.5 left-0.5 bg-black/75 text-[9px] font-mono text-white px-1 rounded shadow">
+                          #{idx + 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveImage(idx)}
+                          className="absolute top-0.5 right-0.5 p-1 bg-rose-600/90 hover:bg-rose-600 text-white rounded-md shadow-md transition-all active:scale-90"
+                          title="ছবি মুছুন"
+                        >
+                          <XCircle size={13} />
+                        </button>
+                      </div>
+                    ))}
+                    {uploadedImages.length < 10 && (
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="aspect-square rounded-lg border border-dashed border-white/20 hover:border-amber-400/60 bg-white/5 hover:bg-amber-500/10 flex flex-col items-center justify-center text-white/50 hover:text-amber-300 transition-all active:scale-95"
+                        title="আরও ছবি যোগ করুন"
+                      >
+                        <Plus size={18} />
+                        <span className="text-[9px] font-bold mt-0.5">+ যোগ</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Error Message */}
               {formError && (
                 <div className="bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-bold py-2 px-3 rounded-xl flex items-center gap-1.5">
@@ -2006,6 +2181,12 @@ function SureShotInvoiceModal({
               <span className="text-slate-500 text-[11px] uppercase font-bold tracking-wider">Issue Time</span>
               <span className="font-semibold text-slate-700 text-[11px]">{issueDate}</span>
             </div>
+            {booking.images && booking.images.length > 0 && (
+              <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                <span className="text-slate-500 text-[11px] uppercase font-bold tracking-wider">ডকুমেন্টস / ছবি</span>
+                <span className="font-bold text-emerald-700 text-xs">✓ {booking.images.length}টি ফাইল সংযুক্ত</span>
+              </div>
+            )}
           </div>
 
           {/* Concise Footer Note */}
@@ -4435,6 +4616,144 @@ function AdminDashboard({
   );
 }
 
+// --- Admin Image Viewer Modal (Displays all uploaded images in vertical scrollable view) ---
+function AdminImageViewerModal({
+  data,
+  onClose
+}: {
+  data: { req: RequestData; images: string[] };
+  onClose: () => void;
+}) {
+  const candidateName = data.req.senderName || data.req.recipientName || 'Sure Shot Applicant';
+  const phoneNumber = data.req.whatsappNumber || data.req.senderNumber || '';
+  const refId = data.req.refId || 'N/A';
+  const dateObj = data.req.createdAt?.toDate ? data.req.createdAt.toDate() : null;
+  const formattedDate = dateObj 
+    ? dateObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) 
+    : 'Recently';
+
+  const downloadSingleImage = (imgSrc: string, index: number) => {
+    try {
+      const link = document.createElement('a');
+      link.href = imgSrc;
+      link.download = `Doc_${refId.replace(/[^a-zA-Z0-9_-]/g, '')}_Image_${index + 1}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e) {
+      console.error('Download error:', e);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <motion.div 
+        initial={{ opacity: 0 }} 
+        animate={{ opacity: 1 }} 
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 bg-black/90 backdrop-blur-md" 
+      />
+      
+      <motion.div 
+        initial={{ scale: 0.94, opacity: 0 }} 
+        animate={{ scale: 1, opacity: 1 }} 
+        exit={{ scale: 0.94, opacity: 0 }}
+        className="relative w-full max-w-lg bg-[#0e111a] border-2 border-amber-500/40 rounded-3xl p-4 sm:p-5 shadow-[0_0_40px_rgba(245,158,11,0.25)] my-auto z-10 flex flex-col gap-3.5 max-h-[92vh] overflow-hidden"
+      >
+        {/* Glow Header Accent Line */}
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600" />
+
+        {/* Modal Top Info Bar */}
+        <div className="flex items-start justify-between gap-3 pb-3 border-b border-white/10 pt-1 shrink-0">
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-black uppercase text-amber-400 bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                ডকুমেন্টস ভিউয়ার
+              </span>
+              <span className="text-[10px] font-mono text-white/70 bg-white/5 px-2 py-0.5 rounded-md border border-white/10">
+                {refId}
+              </span>
+              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/25">
+                মোট {data.images.length}টি ছবি
+              </span>
+            </div>
+            <h3 className="text-base font-black text-white mt-1 break-words">{candidateName}</h3>
+            {phoneNumber && (
+              <p className="text-xs font-mono text-emerald-400 flex items-center gap-1 mt-0.5">
+                <Smartphone size={12} /> {phoneNumber}
+              </p>
+            )}
+            <p className="text-[10px] text-white/50 mt-0.5 flex items-center gap-1">
+              <Clock size={11} /> {formattedDate}
+            </p>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="p-1.5 text-white/50 hover:text-white rounded-xl bg-white/5 hover:bg-white/10 transition-colors shrink-0"
+            title="বন্ধ করুন"
+          >
+            <XCircle size={22} />
+          </button>
+        </div>
+
+        {/* Scrollable Images Container: Vertical Stack */}
+        <div className="overflow-y-auto pr-1 space-y-4 max-h-[66vh] custom-scrollbar">
+          {data.images.map((img, idx) => (
+            <div 
+              key={idx} 
+              className="bg-[#141824] border border-white/10 rounded-2xl p-2.5 sm:p-3 space-y-2.5 shadow-lg"
+            >
+              {/* Image Title & Download Control */}
+              <div className="flex items-center justify-between text-xs text-white/80 px-1">
+                <span className="font-bold text-amber-300 flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 text-[10px] font-black flex items-center justify-center">
+                    {idx + 1}
+                  </span>
+                  ছবি #{idx + 1} / {data.images.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => downloadSingleImage(img, idx)}
+                  className="px-2.5 py-1 bg-white/5 hover:bg-amber-500/20 text-white/70 hover:text-amber-300 border border-white/10 hover:border-amber-500/30 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 active:scale-95"
+                  title="ছবি ডাউনলোড করুন"
+                >
+                  <Download size={12} />
+                  <span>ডাউনলোড</span>
+                </button>
+              </div>
+
+              {/* Full Image */}
+              <div className="relative rounded-xl overflow-hidden bg-black/70 border border-white/10 flex items-center justify-center min-h-[160px]">
+                <img 
+                  src={img} 
+                  alt={`Candidate Document ${idx + 1}`} 
+                  className="w-full max-h-[480px] object-contain rounded-xl"
+                  loading="lazy"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Bottom Actions */}
+        <div className="pt-2 border-t border-white/10 shrink-0 flex items-center justify-between gap-2">
+          <span className="text-[11px] text-white/50">
+            নিচে স্ক্রল করে সব ছবি দেখতে পারবেন
+          </span>
+          <button
+            onClick={onClose}
+            className="py-2 px-5 bg-gradient-to-r from-amber-500 to-orange-500 hover:opacity-95 text-black font-black text-xs rounded-xl shadow-md transition-all active:scale-95"
+          >
+            বন্ধ করুন (Close)
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 // --- Admin Sure Shot Pre-Booking Management View ---
 
 function AdminSureShotView() {
@@ -4442,6 +4761,7 @@ function AdminSureShotView() {
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'pending' | 'confirmed' | 'rejected'>('pending');
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [viewingImagesData, setViewingImagesData] = useState<{ req: RequestData; images: string[] } | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'requests'), orderBy('createdAt', 'desc'));
@@ -4581,6 +4901,19 @@ function AdminSureShotView() {
                     {req.refId}
                   </span>
                   <Badge status={req.status} />
+
+                  {/* Top quick view button */}
+                  {req.images && req.images.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setViewingImagesData({ req, images: req.images! })}
+                      className="text-[10px] font-black text-amber-300 bg-amber-500/20 hover:bg-amber-500/35 px-2 py-0.5 rounded-lg border border-amber-500/40 flex items-center gap-1 transition-all active:scale-95"
+                      title="আপলোডকৃত ছবিগুলো দেখুন"
+                    >
+                      <Eye size={11} className="text-amber-400" />
+                      <span>ছবি ({req.images.length})</span>
+                    </button>
+                  )}
                 </div>
 
                 {/* Live Timer */}
@@ -4638,7 +4971,7 @@ function AdminSureShotView() {
 
               {/* Actions Row */}
               <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-white/5">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   {req.status === 'pending' && (
                     <>
                       <button
@@ -4675,6 +5008,19 @@ function AdminSureShotView() {
                       <CheckCircle2 size={14} /> Re-Confirm
                     </button>
                   )}
+
+                  {/* Primary View Action Button with Image Count */}
+                  {req.images && req.images.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setViewingImagesData({ req, images: req.images! })}
+                      className="px-3 py-1.5 bg-gradient-to-r from-amber-500/25 via-orange-500/20 to-amber-500/25 hover:from-amber-500/40 hover:to-orange-500/35 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                      title="আপলোডকৃত ছবিগুলো দেখুন"
+                    >
+                      <Eye size={14} className="text-amber-400" />
+                      <span>ভিউ ({req.images.length})</span>
+                    </button>
+                  )}
                 </div>
 
                 <button
@@ -4696,6 +5042,16 @@ function AdminSureShotView() {
           </div>
         )}
       </div>
+
+      {/* Image Viewer Modal */}
+      <AnimatePresence>
+        {viewingImagesData && (
+          <AdminImageViewerModal
+            data={viewingImagesData}
+            onClose={() => setViewingImagesData(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -4707,6 +5063,7 @@ function AdminRequestsView({ requestType }: { requestType: 'seat_booking' | 'wit
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'pending' | 'accepted' | 'confirmed' | 'rejected'>('pending');
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [viewingImagesData, setViewingImagesData] = useState<{ req: RequestData; images: string[] } | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'requests'), orderBy('createdAt', 'desc'));
@@ -4943,6 +5300,19 @@ function AdminRequestsView({ requestType }: { requestType: 'seat_booking' | 'wit
                       <CheckCircle2 size={14} /> Re-Confirm
                     </button>
                   )}
+
+                  {/* View Uploaded Photos Button */}
+                  {req.images && req.images.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setViewingImagesData({ req, images: req.images! })}
+                      className="px-3 py-1.5 bg-cyan-500/20 hover:bg-cyan-500/35 text-cyan-300 border border-cyan-500/40 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                      title="আপলোডকৃত ছবিগুলো দেখুন"
+                    >
+                      <Eye size={14} className="text-cyan-400" />
+                      <span>ভিউ ({req.images.length})</span>
+                    </button>
+                  )}
                 </div>
 
                 <button
@@ -4963,6 +5333,16 @@ function AdminRequestsView({ requestType }: { requestType: 'seat_booking' | 'wit
           </div>
         )}
       </div>
+
+      {/* Image Viewer Modal */}
+      <AnimatePresence>
+        {viewingImagesData && (
+          <AdminImageViewerModal
+            data={viewingImagesData}
+            onClose={() => setViewingImagesData(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
