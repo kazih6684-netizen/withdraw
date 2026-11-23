@@ -22,6 +22,8 @@ import {
 import { UserProfile, TeamMember, RequestData, FakeInvoice1Data, FakeInvoice2Data } from './types';
 import { TRANSLATIONS } from './constants';
 import { MemberDesignBadge } from './components/MemberDesignBadge';
+import { PWAInstallModal, PWAInstallButton, OfflineIndicator } from './components/PWAInstallModal';
+import { usePWAInstall } from './hooks/usePWAInstall';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Bell, 
@@ -435,6 +437,14 @@ export default function App() {
   const [isAdminSession, setIsAdminSession] = useState(false);
   const [userPinConfig, setUserPinConfig] = useState<string>('1234');
   const [appLogoUrl, setAppLogoUrl] = useState<string>('');
+  const pwa = usePWAInstall();
+  const [showInstallPopup, setShowInstallPopup] = useState(false);
+
+  useEffect(() => {
+    if (pwa.isInstalled) {
+      setShowInstallPopup(false);
+    }
+  }, [pwa.isInstalled]);
 
   useEffect(() => {
     // Fetch user PIN config & logo live
@@ -455,6 +465,9 @@ export default function App() {
     if (savedAdmin === 'true') {
       setIsAdminSession(true);
       setView('admin');
+      if (!pwa.isInstalled) {
+        setShowInstallPopup(true);
+      }
     }
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -503,15 +516,22 @@ export default function App() {
     setIsAdminSession(true);
     localStorage.setItem('unity_admin_session', 'true');
     setView('admin');
+    if (!pwa.isInstalled) {
+      setShowInstallPopup(true);
+    }
   };
 
   const handleEnterAsGuest = () => {
     setView('user');
+    if (!pwa.isInstalled) {
+      setShowInstallPopup(true);
+    }
   };
 
   const handleLogout = async () => {
     await signOut(auth);
     setIsAdminSession(false);
+    setShowInstallPopup(false);
     localStorage.removeItem('unity_admin_session');
     setView('landing');
   };
@@ -549,6 +569,8 @@ export default function App() {
               onAdminClick={() => setView('admin')} 
               isAdminSession={isAdminSession}
               appLogoUrl={appLogoUrl}
+              isPWAInstalled={pwa.isInstalled}
+              onOpenPWAInstall={() => setShowInstallPopup(true)}
             />
           )}
           {view === 'admin' && (
@@ -561,10 +583,27 @@ export default function App() {
               setShowNotifications={setShowNotifications}
               onUserView={() => setView('user')}
               appLogoUrl={appLogoUrl}
+              isPWAInstalled={pwa.isInstalled}
+              onOpenPWAInstall={() => setShowInstallPopup(true)}
             />
           )}
         </AnimatePresence>
       </div>
+
+      {/* Post-Login PWA Install Modal (Shows on every login until installed) */}
+      <AnimatePresence>
+        {showInstallPopup && !pwa.isInstalled && view !== 'landing' && (
+          <PWAInstallModal
+            isOpen={showInstallPopup}
+            onSkip={() => setShowInstallPopup(false)}
+            appLogoUrl={appLogoUrl}
+            pwa={pwa}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Offline Connectivity Indicator */}
+      <OfflineIndicator />
     </div>
   );
 }
@@ -960,12 +999,14 @@ function LandingPage({ onEnter, onAdminLogin, userPinConfig, appLogoUrl }: { onE
 
 // --- User Dashboard ---
 
-function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUrl }: { 
+function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUrl, isPWAInstalled, onOpenPWAInstall }: { 
   user: UserProfile | null, 
   onLogout: () => void, 
   onAdminClick: () => void,
   isAdminSession: boolean,
   appLogoUrl?: string,
+  isPWAInstalled: boolean,
+  onOpenPWAInstall: () => void,
   key?: string
 }) {
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -1120,6 +1161,7 @@ function UserDashboard({ user, onLogout, onAdminClick, isAdminSession, appLogoUr
           <h2 className="text-2xl font-extrabold tracking-tight text-white">{TRANSLATIONS.TITLE}</h2>
         </div>
         <div className="flex gap-2">
+          <PWAInstallButton isInstalled={isPWAInstalled} onClick={onOpenPWAInstall} />
           {isAdminSession && (
             <button onClick={onAdminClick} className="p-2.5 bg-[#18181b] hover:bg-[#27272a] border border-white/10 text-indigo-400 rounded-xl transition-colors">
               <ShieldCheck size={20} />
@@ -4360,7 +4402,7 @@ function HistoryModal({
 // --- Admin Dashboard ---
 
 function AdminDashboard({ 
-  user, onLogout, notifications, showNotifications, setShowNotifications, onUserView, appLogoUrl 
+  user, onLogout, notifications, showNotifications, setShowNotifications, onUserView, appLogoUrl, isPWAInstalled, onOpenPWAInstall 
 }: { 
   user: UserProfile, 
   onLogout: () => void, 
@@ -4369,6 +4411,8 @@ function AdminDashboard({
   setShowNotifications: (s: boolean) => void,
   onUserView: () => void,
   appLogoUrl?: string,
+  isPWAInstalled: boolean,
+  onOpenPWAInstall: () => void,
   key?: string
 }) {
   const [activeTab, setActiveTab] = useState<'seat_booking' | 'sure_shot' | 'withdraw' | 'members' | 'settings'>('seat_booking');
@@ -4406,6 +4450,7 @@ function AdminDashboard({
           <h2 className="text-xl font-extrabold text-white">Admin Panel</h2>
         </div>
         <div className="flex gap-2">
+          <PWAInstallButton isInstalled={isPWAInstalled} onClick={onOpenPWAInstall} />
           <button 
             onClick={() => setShowNotifications(!showNotifications)}
             className="p-2.5 bg-[#18181b] hover:bg-[#27272a] border border-white/10 rounded-xl relative transition-colors text-white/80"
